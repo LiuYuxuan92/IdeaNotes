@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../features/canvas/bloc/canvas_bloc.dart';
 import '../features/notelist/bloc/note_list_bloc.dart';
-import '../features/notelist/note_list_view.dart';
+import '../features/notelist/note_list_screen.dart';
 import '../core/storage/database_helper.dart';
 
 class IdeaNotesApp extends StatelessWidget {
@@ -55,7 +55,7 @@ class IdeaNotesApp extends StatelessWidget {
           useMaterial3: true,
         ),
         themeMode: ThemeMode.system,
-        home: const NoteListView(),
+        home: const NoteListScreen(),
       ),
     );
   }

@@ -24,8 +24,8 @@ dependencies:
   # OCR - Text Recognition (cross-platform alternative to Apple Vision)
   google_mlkit_text_recognition: ^0.11.0
   
-  # Handwriting/Drawing
-  pencildraw: ^1.0.0
+  # Handwriting/Drawing - using built-in Flutter CustomPaint
+  # pencildraw package doesn't exist, using CustomPainter instead
   
   # UI Components
   cupertino_icons: ^1.0.6
@@ -58,6 +58,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  
-  assets:
-    - assets/images/

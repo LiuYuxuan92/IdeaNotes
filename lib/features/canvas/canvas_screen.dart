@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'bloc/canvas_bloc.dart';
-import '../canvas_toolbar.dart';
+import 'canvas_toolbar.dart';
 import '../../shared/widgets/ocr_result_banner.dart';
 
 /// 手写画布主页面

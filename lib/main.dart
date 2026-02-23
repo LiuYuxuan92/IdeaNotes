@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'app.dart';
+import 'package:idea_notes/app/app.dart';
 import 'core/storage/database_helper.dart';
 
 void main() async {

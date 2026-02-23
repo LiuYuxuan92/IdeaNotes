@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../core/models/note.dart';
 import 'bloc/note_list_bloc.dart';
 import 'note_list_item.dart';
 import '../notedetail/note_detail_screen.dart';
@@ -135,7 +136,7 @@ class _NoteListScreenState extends State<NoteListScreen> {
           final note = state.filteredNotes[index];
           return NoteListItem(
             note: note,
-            onTap: () => _openNoteDetail(note.id),
+            onTap: () => _openNoteDetail(note),
             onDelete: () => _deleteNote(note.id),
           );
         },
@@ -235,11 +236,11 @@ class _NoteListScreenState extends State<NoteListScreen> {
     );
   }
 
-  void _openNoteDetail(String noteId) {
+  void _openNoteDetail(Note note) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => NoteDetailScreen(noteId: noteId),
+        builder: (context) => NoteDetailScreen(note: note),
       ),
     );
   }

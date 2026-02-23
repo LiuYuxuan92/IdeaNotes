@@ -23,7 +23,7 @@ if (flutterVersionName == null) {
 }
 
 android {
-    namespace "com.ideanotes.app"
+    namespace "com.ideanotes.ideanotes"
     compileSdk 34
     ndkVersion flutter.ndkVersion
 
@@ -71,5 +71,3 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.multidex:multidex:2.0.1'
 }
-
-apply plugin: 'com.google.gms.google-services'

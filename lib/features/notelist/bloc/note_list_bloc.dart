@@ -90,7 +90,8 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
     emit(state.copyWith(status: NoteListStatus.loading));
     
     try {
-      final notes = await databaseHelper.getAllNotes();
+      final notesData = await databaseHelper.getNotes();
+      final notes = notesData.map((data) => Note.fromMap(data)).toList();
       // 按更新时间倒序排列
       notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       
@@ -157,7 +158,7 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
         updatedAt: now,
       );
       
-      await databaseHelper.insertNote(newNote);
+      await databaseHelper.insertNote(newNote.toMap());
       
       final updatedNotes = [newNote, ...state.notes];
       final updatedFiltered = state.searchQuery.isEmpty 

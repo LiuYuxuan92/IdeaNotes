@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../core/models/note.dart';
 import '../../core/storage/image_storage.dart';
@@ -14,10 +15,7 @@ class NoteDetailScreen extends StatefulWidget {
 }
 
 class _NoteDetailScreenState extends State<NoteDetailScreen> {
-  final ImageStorage _imageStorage = ImageStorage();
-  final EntryParser _entryParser = EntryParser();
-  
-  Image? _snapshotImage;
+  Uint8List? _snapshotBytes;
   String _recognizedText = '';
   List<dynamic> _entries = [];
   bool _isLoading = true;
@@ -33,13 +31,13 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
 
     // 加载快照图片
     if (widget.note.snapshotImagePath != null) {
-      _snapshotImage = await _imageStorage.loadSnapshot(widget.note.snapshotImagePath!);
+      _snapshotBytes = await ImageStorage.loadSnapshot(widget.note.snapshotImagePath!);
     }
 
     // 解析识别文本
     _recognizedText = widget.note.recognizedText ?? '';
     if (_recognizedText.isNotEmpty) {
-      _entries = _entryParser.parse(_recognizedText);
+      _entries = [EntryParser.parse(_recognizedText)];
     }
 
     setState(() => _isLoading = false);
@@ -65,11 +63,11 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // 手写图片
-                  if (_snapshotImage != null) ...[
+                  if (_snapshotBytes != null) ...[
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Image.memory(
-                        _snapshotImage!.bytes,
+                        _snapshotBytes!,
                         fit: BoxFit.contain,
                         width: double.infinity,
                       ),
