@@ -1,8 +1,10 @@
+import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
-import 'dart:ui' as ui;
-import 'dart:typed_data';
 
 // ==================== Events ====================
 abstract class CanvasEvent extends Equatable {
@@ -64,6 +66,15 @@ class CanvasToolChanged extends CanvasEvent {
   List<Object?> get props => [tool];
 }
 
+class StrokesLoaded extends CanvasEvent {
+  final List<DrawingStroke> strokes;
+
+  const StrokesLoaded(this.strokes);
+
+  @override
+  List<Object?> get props => [strokes];
+}
+
 class CanvasUndoStackUpdated extends CanvasEvent {
   final List<DrawingStroke> undoStack;
   final List<DrawingStroke> redoStack;
@@ -99,6 +110,36 @@ class DrawingStroke extends Equatable {
     required this.strokeWidth,
     this.isEraser = false,
   });
+
+  Map<String, dynamic> toJson() => {
+        'points': points.map((p) => {'x': p.dx, 'y': p.dy}).toList(),
+        'color': color.value,
+        'strokeWidth': strokeWidth,
+        'isEraser': isEraser,
+      };
+
+  factory DrawingStroke.fromJson(Map<String, dynamic> json) {
+    return DrawingStroke(
+      points: (json['points'] as List)
+          .map((p) => Offset((p['x'] as num).toDouble(), (p['y'] as num).toDouble()))
+          .toList(),
+      color: Color(json['color'] as int),
+      strokeWidth: (json['strokeWidth'] as num).toDouble(),
+      isEraser: json['isEraser'] as bool? ?? false,
+    );
+  }
+
+  /// 将笔画列表序列化为 Uint8List（用于数据库 BLOB 存储）
+  static Uint8List serializeStrokes(List<DrawingStroke> strokes) {
+    final jsonList = strokes.map((s) => s.toJson()).toList();
+    return Uint8List.fromList(utf8.encode(jsonEncode(jsonList)));
+  }
+
+  /// 从 Uint8List 反序列化笔画列表
+  static List<DrawingStroke> deserializeStrokes(Uint8List data) {
+    final jsonList = jsonDecode(utf8.decode(data)) as List;
+    return jsonList.map((j) => DrawingStroke.fromJson(j as Map<String, dynamic>)).toList();
+  }
 
   @override
   List<Object?> get props => [points, color, strokeWidth, isEraser];
@@ -170,6 +211,7 @@ class CanvasBloc extends Bloc<CanvasEvent, CanvasState> {
     on<CanvasColorChanged>(_onColorChanged);
     on<CanvasStrokeWidthChanged>(_onStrokeWidthChanged);
     on<CanvasToolChanged>(_onToolChanged);
+    on<StrokesLoaded>(_onStrokesLoaded);
   }
 
   void _onInitialized(CanvasInitialized event, Emitter<CanvasState> emit) {
@@ -271,15 +313,22 @@ class CanvasBloc extends Bloc<CanvasEvent, CanvasState> {
     ));
   }
 
-  // 将画布序列化为字节数据
-  Future<Uint8List?> exportCanvasToImage() async {
-    // 这个方法在需要导出画布时调用
-    // 实际实现需要使用 RenderRepaintBoundary
-    return null;
+  void _onStrokesLoaded(StrokesLoaded event, Emitter<CanvasState> emit) {
+    emit(state.copyWith(
+      strokes: event.strokes,
+      undoStack: event.strokes,
+      redoStack: [],
+    ));
   }
 
-  // 从字节数据加载画布
-  void loadFromData(List<int> data) {
-    // TODO: 实现从数据库加载画布数据
+  /// 序列化当前画布笔画为 BLOB 数据
+  Uint8List serializeCurrentStrokes() {
+    return DrawingStroke.serializeStrokes(state.strokes);
+  }
+
+  /// 从 BLOB 数据加载画布笔画
+  void loadFromData(Uint8List data) {
+    final strokes = DrawingStroke.deserializeStrokes(data);
+    add(StrokesLoaded(strokes));
   }
 }

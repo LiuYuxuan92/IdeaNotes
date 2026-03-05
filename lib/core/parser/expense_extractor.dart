@@ -1,4 +1,4 @@
-import '../models/note_entry.dart';
+import 'package:decimal/decimal.dart';
 
 class ExpenseExtractor {
   // 分类关键词映射
@@ -13,7 +13,7 @@ class ExpenseExtractor {
   ];
 
   /// 从文本中提取金额，返回 null 表示未找到金额
-  double? extractAmount(String text) {
+  Decimal? extractAmount(String text) {
     // 匹配 X块Y毛 格式（前面必须有空格、汉字、或者在开头）
     final kuaiRegex = RegExp(r'(?<=[^\d\s]|\s)(\d+)块(\d*)毛?');
     final kuaiMatch = kuaiRegex.firstMatch(text);
@@ -21,9 +21,9 @@ class ExpenseExtractor {
       final yuan = kuaiMatch.group(1)!;
       final jiao = kuaiMatch.group(2) ?? '';
       if (jiao.isEmpty) {
-        return double.parse(yuan);
+        return Decimal.parse(yuan);
       }
-      return double.parse('$yuan.$jiao');
+      return Decimal.parse('$yuan.$jiao');
     }
 
     // 匹配 ¥X.XX 或 X.XX元（前面必须有空格、汉字、或者在开头）
@@ -32,7 +32,11 @@ class ExpenseExtractor {
     if (amountMatch != null) {
       var matched = amountMatch.group(1)!;
       matched = matched.replaceAll('¥', '').replaceAll('元', '').trim();
-      return double.tryParse(matched);
+      try {
+        return Decimal.parse(matched);
+      } catch (_) {
+        return null;
+      }
     }
 
     return null;

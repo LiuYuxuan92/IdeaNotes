@@ -7,6 +7,12 @@ class DatabaseHelper {
 
   DatabaseHelper._init();
 
+  /// Injects an existing [Database] instance, intended for use in tests only.
+  /// Call [close] before injecting to reset the singleton state.
+  static void injectDatabase(Database db) {
+    _database = db;
+  }
+
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDB('idea_notes.db');
@@ -19,8 +25,12 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDB,
+      onUpgrade: _upgradeDB,
+      onOpen: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
     );
   }
 
@@ -56,7 +66,7 @@ class DatabaseHelper {
         note_id TEXT NOT NULL,
         type TEXT NOT NULL,
         raw_text TEXT NOT NULL,
-        amount REAL,
+        amount TEXT,
         category TEXT,
         event_title TEXT,
         event_date INTEGER,
@@ -75,6 +85,36 @@ class DatabaseHelper {
       'created_at': now,
       'updated_at': now,
     });
+  }
+
+  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Migrate amount column from REAL to TEXT in note_entries
+      await db.execute('''
+        CREATE TABLE note_entries_new (
+          id TEXT PRIMARY KEY,
+          note_id TEXT NOT NULL,
+          type TEXT NOT NULL,
+          raw_text TEXT NOT NULL,
+          amount TEXT,
+          category TEXT,
+          event_title TEXT,
+          event_date INTEGER,
+          is_completed INTEGER DEFAULT 0,
+          memo_text TEXT,
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (note_id) REFERENCES notes (id) ON DELETE CASCADE
+        )
+      ''');
+      await db.execute('''
+        INSERT INTO note_entries_new
+          SELECT id, note_id, type, raw_text, CAST(amount AS TEXT),
+                 category, event_title, event_date, is_completed, memo_text, created_at
+          FROM note_entries
+      ''');
+      await db.execute('DROP TABLE note_entries');
+      await db.execute('ALTER TABLE note_entries_new RENAME TO note_entries');
+    }
   }
 
   // Notebook operations

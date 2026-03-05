@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../core/models/note_entry.dart';
+import '../../core/models/note_entry.dart';
 
 /// 条目行组件 - 用于展示解析后的笔记条目
 class EntryRow extends StatelessWidget {
@@ -65,7 +65,7 @@ class EntryRow extends StatelessWidget {
       case NoteEntryType.expense:
         if (entry.expense != null) {
           return Text(
-            '${entry.expense!.category} · ¥${entry.expense!.amount.toStringAsFixed(2)}',
+            '${entry.expense!.category} · ¥${entry.expense!.amount.toDouble().toStringAsFixed(2)}',
             style: theme.textTheme.bodySmall?.copyWith(
               color: Colors.orange.shade700,
               fontWeight: FontWeight.w500,

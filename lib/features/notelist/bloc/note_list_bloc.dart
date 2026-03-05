@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:uuid/uuid.dart';
 import '../../../core/storage/database_helper.dart';
+import '../../../core/storage/image_storage.dart';
 import '../../../core/models/note.dart';
 
 // ==================== Events ====================
@@ -133,6 +135,7 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
 
   Future<void> _onDeleteNote(DeleteNote event, Emitter<NoteListState> emit) async {
     try {
+      await ImageStorage.deleteNoteImages(event.noteId);
       await databaseHelper.deleteNote(event.noteId);
       
       final updatedNotes = state.notes.where((n) => n.id != event.noteId).toList();
@@ -151,9 +154,10 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
 
   Future<void> _onCreateNote(CreateNote event, Emitter<NoteListState> emit) async {
     try {
+      const uuid = Uuid();
       final now = DateTime.now();
       final newNote = Note(
-        id: now.millisecondsSinceEpoch.toString(),
+        id: uuid.v4(),
         createdAt: now,
         updatedAt: now,
       );

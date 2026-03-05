@@ -1,14 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../core/storage/database_helper.dart';
 import '../../core/models/note.dart';
 import '../notedetail/note_detail_screen.dart';
 import '../notelist/note_list_item.dart';
+import '../notelist/bloc/note_list_bloc.dart';
 
 class SearchScreen extends StatefulWidget {
-  final DatabaseHelper databaseHelper;
-
-  const SearchScreen({super.key, required this.databaseHelper});
+  const SearchScreen({super.key});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -16,54 +15,20 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
-  List<Note> _searchResults = [];
-  bool _isSearching = false;
-  bool _hasSearched = false;
+  Timer? _debounce;
+
+  void _onSearchChanged(String query) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      context.read<NoteListBloc>().add(SearchNotes(query));
+    });
+  }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
-  }
-
-  Future<void> _performSearch(String query) async {
-    if (query.trim().isEmpty) {
-      setState(() {
-        _searchResults = [];
-        _hasSearched = false;
-      });
-      return;
-    }
-
-    setState(() => _isSearching = true);
-
-    try {
-      final allNotes = await widget.databaseHelper.getAllNotes();
-      final results = allNotes.where((note) {
-        final recognizedText = note.recognizedText?.toLowerCase() ?? '';
-        final searchQuery = query.toLowerCase();
-        
-        // 搜索识别文本
-        return recognizedText.contains(searchQuery);
-      }).toList();
-
-      setState(() {
-        _searchResults = results;
-        _hasSearched = true;
-        _isSearching = false;
-      });
-    } catch (e) {
-      setState(() {
-        _searchResults = [];
-        _isSearching = false;
-      });
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('搜索失败: $e')),
-        );
-      }
-    }
   }
 
   @override
@@ -77,15 +42,11 @@ class _SearchScreenState extends State<SearchScreen> {
             hintText: '搜索笔记内容...',
             border: InputBorder.none,
           ),
-          onSubmitted: _performSearch,
-          onChanged: (value) {
-            // 300ms 防抖
-            Future.delayed(const Duration(milliseconds: 300), () {
-              if (_searchController.text == value) {
-                _performSearch(value);
-              }
-            });
+          onSubmitted: (value) {
+            _debounce?.cancel();
+            context.read<NoteListBloc>().add(SearchNotes(value));
           },
+          onChanged: _onSearchChanged,
         ),
         actions: [
           if (_searchController.text.isNotEmpty)
@@ -93,24 +54,24 @@ class _SearchScreenState extends State<SearchScreen> {
               icon: const Icon(Icons.clear),
               onPressed: () {
                 _searchController.clear();
-                setState(() {
-                  _searchResults = [];
-                  _hasSearched = false;
-                });
+                _debounce?.cancel();
+                context.read<NoteListBloc>().add(const SearchNotes(''));
               },
             ),
         ],
       ),
-      body: _buildBody(),
+      body: BlocBuilder<NoteListBloc, NoteListState>(
+        builder: (context, state) {
+          return _buildBody(state);
+        },
+      ),
     );
   }
 
-  Widget _buildBody() {
-    if (_isSearching) {
-      return const Center(child: CircularProgressIndicator());
-    }
+  Widget _buildBody(NoteListState state) {
+    final query = state.searchQuery;
 
-    if (!_hasSearched) {
+    if (query.isEmpty) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -126,7 +87,7 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
 
-    if (_searchResults.isEmpty) {
+    if (state.filteredNotes.isEmpty) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -144,9 +105,9 @@ class _SearchScreenState extends State<SearchScreen> {
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: _searchResults.length,
+      itemCount: state.filteredNotes.length,
       itemBuilder: (context, index) {
-        final note = _searchResults[index];
+        final note = state.filteredNotes[index];
         return NoteListItem(
           note: note,
           onTap: () {

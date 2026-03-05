@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
@@ -51,16 +52,21 @@ class ImageStorage {
     return filePath;
   }
 
-  /// 保存缩略图图片
-  /// 返回保存后的文件路径
-  static Future<String> saveThumbnail(Uint8List imageBytes, String noteId) async {
+  /// 保存缩略图图片（缩放为 200×200）
+  /// 返回保存后的文件路径，解码失败时返回 null
+  static Future<String?> saveThumbnail(Uint8List imageBytes, String noteId) async {
+    final decoded = img.decodeImage(imageBytes);
+    if (decoded == null) return null;
+    final thumbnail = img.copyResize(decoded, width: 200, height: 200);
+    final thumbnailBytes = Uint8List.fromList(img.encodePng(thumbnail));
+
     final thumbnailDir = await _getThumbnailDirectory();
     final fileName = '${noteId}_thumb_${_uuid.v4()}.png';
     final filePath = '${thumbnailDir.path}/$fileName';
-    
+
     final file = File(filePath);
-    await file.writeAsBytes(imageBytes);
-    
+    await file.writeAsBytes(thumbnailBytes);
+
     return filePath;
   }
 

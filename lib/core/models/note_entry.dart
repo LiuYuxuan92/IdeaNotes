@@ -1,3 +1,4 @@
+import 'package:decimal/decimal.dart';
 import 'package:equatable/equatable.dart';
 
 enum NoteEntryType {
@@ -28,7 +29,7 @@ class NoteEntry extends Equatable {
 }
 
 class ExpenseRecord extends Equatable {
-  final double amount;
+  final Decimal amount;
   final String category;
   final String description;
 

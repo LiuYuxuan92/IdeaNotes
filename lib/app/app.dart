@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../features/canvas/bloc/canvas_bloc.dart';
 import '../features/notelist/bloc/note_list_bloc.dart';
 import '../features/notelist/note_list_screen.dart';
 import '../core/storage/database_helper.dart';
@@ -10,17 +9,10 @@ class IdeaNotesApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider<NoteListBloc>(
-          create: (context) => NoteListBloc(
-            databaseHelper: DatabaseHelper.instance,
-          )..add(LoadNotes()),
-        ),
-        BlocProvider<CanvasBloc>(
-          create: (context) => CanvasBloc(),
-        ),
-      ],
+    return BlocProvider<NoteListBloc>(
+      create: (context) => NoteListBloc(
+        databaseHelper: DatabaseHelper.instance,
+      )..add(LoadNotes()),
       child: MaterialApp(
         title: 'IdeaNotes',
         debugShowCheckedModeBanner: false,

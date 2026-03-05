@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'bloc/canvas_bloc.dart';
+import '../bloc/canvas_bloc.dart';
 
 /// CustomPainter 实现 - 负责绘制手写笔迹
 class CanvasPainter extends CustomPainter {
@@ -22,6 +22,9 @@ class CanvasPainter extends CustomPainter {
     // 绘制背景
     _drawBackground(canvas, size);
 
+    // 使用 saveLayer 以支持橡皮擦的 BlendMode.clear
+    canvas.saveLayer(Rect.fromLTWH(0, 0, size.width, size.height), Paint());
+
     // 绘制已完成的笔画
     for (final stroke in strokes) {
       _drawStroke(canvas, stroke);
@@ -37,6 +40,8 @@ class CanvasPainter extends CustomPainter {
       );
       _drawStroke(canvas, currentStroke);
     }
+
+    canvas.restore();
   }
 
   void _drawBackground(Canvas canvas, Size size) {
@@ -48,12 +53,12 @@ class CanvasPainter extends CustomPainter {
     if (stroke.points.isEmpty) return;
 
     final paint = Paint()
-      ..color = stroke.isEraser ? Colors.white : stroke.color
+      ..color = stroke.isEraser ? Colors.transparent : stroke.color
       ..strokeWidth = stroke.strokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke
-      ..blendMode = stroke.isEraser ? BlendMode.srcOver : BlendMode.srcOver;
+      ..blendMode = stroke.isEraser ? BlendMode.clear : BlendMode.srcOver;
 
     if (stroke.points.length == 1) {
       // 单点绘制圆点

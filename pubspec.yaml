@@ -17,6 +17,9 @@ dependencies:
   # Local Database
   sqflite: ^2.3.0
   path: ^1.8.3
+
+  # Decimal for monetary amounts
+  decimal: ^2.3.3
   
   # File System
   path_provider: ^2.1.1
@@ -55,6 +58,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.1
+  sqflite_common_ffi: ^2.3.0
 
 flutter:
   uses-material-design: true

@@ -1,3 +1,4 @@
+import 'package:decimal/decimal.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idea_notes/core/parser/expense_extractor.dart';
 
@@ -7,37 +8,37 @@ void main() {
 
     test('提取 ¥28', () {
       final result = extractor.extractAmount('花费 ¥28');
-      expect(result, 28.0);
+      expect(result, Decimal.parse('28'));
     });
 
     test('提取 ¥28.5', () {
       final result = extractor.extractAmount('花费 ¥28.5');
-      expect(result, 28.5);
+      expect(result, Decimal.parse('28.5'));
     });
 
     test('提取 35.5元', () {
       final result = extractor.extractAmount('花了35.5元');
-      expect(result, 35.5);
+      expect(result, Decimal.parse('35.5'));
     });
 
     test('提取 10块5毛', () {
       final result = extractor.extractAmount('用了10块5毛');
-      expect(result, 10.5);
+      expect(result, Decimal.parse('10.5'));
     });
 
     test('提取 10块（无毛）', () {
       final result = extractor.extractAmount('花了10块');
-      expect(result, 10.0);
+      expect(result, Decimal.parse('10'));
     });
 
     test('提取纯数字 100', () {
       final result = extractor.extractAmount('100元');
-      expect(result, 100.0);
+      expect(result, Decimal.parse('100'));
     });
 
     test('提取纯数字 0.5', () {
       final result = extractor.extractAmount('0.5元');
-      expect(result, 0.5);
+      expect(result, Decimal.parse('0.5'));
     });
 
     test('无金额时返回 null', () {
@@ -57,12 +58,12 @@ void main() {
 
     test('提取 3块2', () {
       final result = extractor.extractAmount('3块2');
-      expect(result, 3.2);
+      expect(result, Decimal.parse('3.2'));
     });
 
     test('提取数字开头', () {
       final result = extractor.extractAmount('28块');
-      expect(result, 28.0);
+      expect(result, Decimal.parse('28'));
     });
   });
 

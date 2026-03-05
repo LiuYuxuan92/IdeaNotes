@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/models/note.dart';
@@ -17,6 +18,7 @@ class NoteListScreen extends StatefulWidget {
 
 class _NoteListScreenState extends State<NoteListScreen> {
   final TextEditingController _searchController = TextEditingController();
+  Timer? _debounce;
   bool _isSearching = false;
 
   @override
@@ -28,6 +30,7 @@ class _NoteListScreenState extends State<NoteListScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -101,7 +104,10 @@ class _NoteListScreenState extends State<NoteListScreen> {
           fillColor: Colors.white,
         ),
         onChanged: (value) {
-          context.read<NoteListBloc>().add(SearchNotes(value));
+          _debounce?.cancel();
+          _debounce = Timer(const Duration(milliseconds: 300), () {
+            context.read<NoteListBloc>().add(SearchNotes(value));
+          });
         },
       ),
     );
