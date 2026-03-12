@@ -16,6 +16,8 @@ dependencies:
   
   # Local Database
   sqflite: ^2.3.0
+  sqflite_common_ffi: ^2.3.0
+  sqlite3: ^3.2.0
   path: ^1.8.3
 
   # Decimal for monetary amounts
@@ -58,7 +60,12 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.1
-  sqflite_common_ffi: ^2.3.0
 
 flutter:
   uses-material-design: true
+
+hooks:
+  user_defines:
+    sqlite3:
+      source: system
+      name: sqlite3

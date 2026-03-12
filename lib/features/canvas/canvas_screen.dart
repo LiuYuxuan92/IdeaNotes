@@ -13,6 +13,7 @@ import 'canvas_toolbar.dart';
 import 'widgets/canvas_painter.dart';
 import '../../core/models/note.dart';
 import '../../core/parser/entry_parser.dart';
+import '../../core/ocr/ocr_engine.dart';
 import '../../core/storage/database_helper.dart';
 import '../../core/storage/image_storage.dart';
 import '../../core/ocr/vision_ocr.dart';

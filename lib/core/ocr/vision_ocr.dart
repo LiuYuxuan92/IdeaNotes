@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'ocr_engine.dart';
+import 'mlkit_ocr.dart';
 
 /// Apple Vision OCR 实现
 /// 用于 iOS 系统
@@ -138,7 +139,7 @@ class VisionOcrOptions {
 class OcrEngineFactory {
   /// 创建适合当前平台的 OCR 引擎
   static OcrEngine createForPlatform() {
-    if (Platform.isAndroid || Platform.isHarmonyOS) {
+    if (Platform.isAndroid) {
       return MlKitOcr();
     } else if (Platform.isIOS) {
       return VisionOcr();

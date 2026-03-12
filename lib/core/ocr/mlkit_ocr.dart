@@ -33,7 +33,7 @@ class MlKitOcr implements OcrEngine {
 
   @override
   Future<bool> isAvailable() async {
-    if (Platform.isAndroid || Platform.isHarmonyOS) {
+    if (Platform.isAndroid) {
       await _ensureInitialized();
       return _isInitialized;
     }
