@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
       onOpen: (db) async {
@@ -54,6 +54,7 @@ class DatabaseHelper {
         updated_at INTEGER NOT NULL,
         canvas_data BLOB,
         snapshot_image_path TEXT,
+        thumbnail_image_path TEXT,
         recognized_text TEXT,
         FOREIGN KEY (notebook_id) REFERENCES notebooks (id) ON DELETE CASCADE
       )
@@ -114,6 +115,10 @@ class DatabaseHelper {
       ''');
       await db.execute('DROP TABLE note_entries');
       await db.execute('ALTER TABLE note_entries_new RENAME TO note_entries');
+    }
+
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE notes ADD COLUMN thumbnail_image_path TEXT');
     }
   }
 

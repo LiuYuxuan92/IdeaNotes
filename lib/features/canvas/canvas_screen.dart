@@ -38,6 +38,16 @@ class CanvasScreen extends StatefulWidget {
   State<CanvasScreen> createState() => _CanvasScreenState();
 }
 
+class _CanvasImagePaths {
+  final String? snapshotPath;
+  final String? thumbnailPath;
+
+  const _CanvasImagePaths({
+    this.snapshotPath,
+    this.thumbnailPath,
+  });
+}
+
 class _CanvasScreenState extends State<CanvasScreen> {
   final GlobalKey _canvasRepaintKey = GlobalKey();
   List<Offset> _currentPoints = [];
@@ -263,14 +273,15 @@ class _CanvasScreenState extends State<CanvasScreen> {
     try {
       final canvasData = _canvasBloc.serializeCurrentStrokes();
       final noteId = _existingNote?.id ?? const Uuid().v4();
-      final snapshotPath = await _saveCanvasImages(noteId);
+      final imagePaths = await _saveCanvasImages(noteId);
       final now = DateTime.now();
       final recognizedText = _ocrResult.isNotEmpty ? _ocrResult : null;
 
       await _upsertNote(
         noteId: noteId,
         canvasData: canvasData,
-        snapshotPath: snapshotPath,
+        snapshotPath: imagePaths.snapshotPath,
+        thumbnailPath: imagePaths.thumbnailPath,
         recognizedText: recognizedText,
         now: now,
       );
@@ -296,8 +307,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
     }
   }
 
-  Future<String?> _saveCanvasImages(String noteId) async {
+  Future<_CanvasImagePaths> _saveCanvasImages(String noteId) async {
     String? snapshotPath;
+    String? thumbnailPath;
 
     final snapshotBytes = await _captureCanvas();
     if (snapshotBytes != null) {
@@ -306,16 +318,20 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
     final thumbnailBytes = await _captureThumbnail();
     if (thumbnailBytes != null) {
-      await ImageStorage.saveThumbnail(thumbnailBytes, noteId);
+      thumbnailPath = await ImageStorage.saveThumbnail(thumbnailBytes, noteId);
     }
 
-    return snapshotPath;
+    return _CanvasImagePaths(
+      snapshotPath: snapshotPath,
+      thumbnailPath: thumbnailPath,
+    );
   }
 
   Future<void> _upsertNote({
     required String noteId,
     required Uint8List canvasData,
     required String? snapshotPath,
+    required String? thumbnailPath,
     required String? recognizedText,
     required DateTime now,
   }) async {
@@ -324,6 +340,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
         'updated_at': now.millisecondsSinceEpoch,
         'canvas_data': canvasData,
         'snapshot_image_path': snapshotPath ?? _existingNote!.snapshotImagePath,
+        'thumbnail_image_path': thumbnailPath ?? _existingNote!.thumbnailImagePath,
         'recognized_text': recognizedText,
       });
 
@@ -332,6 +349,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
           updatedAt: now,
           canvasData: canvasData,
           snapshotImagePath: snapshotPath ?? _existingNote!.snapshotImagePath,
+          thumbnailImagePath: thumbnailPath ?? _existingNote!.thumbnailImagePath,
           recognizedText: recognizedText,
         );
       });
@@ -345,6 +363,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       'updated_at': now.millisecondsSinceEpoch,
       'canvas_data': canvasData,
       'snapshot_image_path': snapshotPath,
+      'thumbnail_image_path': thumbnailPath,
       'recognized_text': recognizedText,
     });
 
@@ -356,6 +375,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
         updatedAt: now,
         canvasData: canvasData,
         snapshotImagePath: snapshotPath,
+        thumbnailImagePath: thumbnailPath,
         recognizedText: recognizedText,
       );
     });

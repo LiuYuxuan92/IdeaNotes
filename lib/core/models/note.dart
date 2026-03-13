@@ -8,6 +8,7 @@ class Note extends Equatable {
   final DateTime updatedAt;
   final List<int>? canvasData;
   final String? snapshotImagePath;
+  final String? thumbnailImagePath;
   final String? recognizedText;
   final List<NoteEntry> entries;
 
@@ -18,6 +19,7 @@ class Note extends Equatable {
     required this.updatedAt,
     this.canvasData,
     this.snapshotImagePath,
+    this.thumbnailImagePath,
     this.recognizedText,
     this.entries = const [],
   });
@@ -30,6 +32,7 @@ class Note extends Equatable {
       updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int),
       canvasData: map['canvas_data'] as List<int>?,
       snapshotImagePath: map['snapshot_image_path'] as String?,
+      thumbnailImagePath: map['thumbnail_image_path'] as String?,
       recognizedText: map['recognized_text'] as String?,
     );
   }
@@ -42,6 +45,7 @@ class Note extends Equatable {
       'updated_at': updatedAt.millisecondsSinceEpoch,
       'canvas_data': canvasData,
       'snapshot_image_path': snapshotImagePath,
+      'thumbnail_image_path': thumbnailImagePath,
       'recognized_text': recognizedText,
     };
   }
@@ -53,6 +57,7 @@ class Note extends Equatable {
     DateTime? updatedAt,
     List<int>? canvasData,
     String? snapshotImagePath,
+    String? thumbnailImagePath,
     String? recognizedText,
     List<NoteEntry>? entries,
   }) {
@@ -63,6 +68,7 @@ class Note extends Equatable {
       updatedAt: updatedAt ?? this.updatedAt,
       canvasData: canvasData ?? this.canvasData,
       snapshotImagePath: snapshotImagePath ?? this.snapshotImagePath,
+      thumbnailImagePath: thumbnailImagePath ?? this.thumbnailImagePath,
       recognizedText: recognizedText ?? this.recognizedText,
       entries: entries ?? this.entries,
     );
@@ -76,6 +82,7 @@ class Note extends Equatable {
         updatedAt,
         canvasData,
         snapshotImagePath,
+        thumbnailImagePath,
         recognizedText,
         entries,
       ];

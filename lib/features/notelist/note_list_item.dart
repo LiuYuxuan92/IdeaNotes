@@ -96,9 +96,9 @@ class NoteListItem extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: note.snapshotImagePath != null
+        child: (note.thumbnailImagePath ?? note.snapshotImagePath) != null
             ? Image.file(
-                File(note.snapshotImagePath!),
+                File(note.thumbnailImagePath ?? note.snapshotImagePath!),
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
               )
