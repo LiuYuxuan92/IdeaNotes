@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../core/models/note.dart';
+import '../../core/models/note_entry.dart';
+import '../../core/storage/database_helper.dart';
 import '../../core/storage/image_storage.dart';
 import '../../core/parser/entry_parser.dart';
 import '../../shared/widgets/entry_row.dart';
@@ -34,10 +36,17 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
       _snapshotBytes = await ImageStorage.loadSnapshot(widget.note.snapshotImagePath!);
     }
 
-    // 解析识别文本
     _recognizedText = widget.note.recognizedText ?? '';
-    if (_recognizedText.isNotEmpty) {
-      _entries = [EntryParser.parse(_recognizedText)];
+
+    // 优先读取数据库里的结构化条目，保证和保存时的数据源一致
+    final entryMaps = await DatabaseHelper.instance.getNoteEntries(widget.note.id);
+    if (entryMaps.isNotEmpty) {
+      _entries = entryMaps.map((map) => NoteEntry.fromMap(map)).toList();
+    } else if (_recognizedText.isNotEmpty) {
+      // 数据库里暂无条目时，再退回到按 OCR 文本现场解析
+      _entries = EntryParser.parseMultiLine(_recognizedText);
+    } else {
+      _entries = [];
     }
 
     setState(() => _isLoading = false);

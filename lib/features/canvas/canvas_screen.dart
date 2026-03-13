@@ -263,73 +263,19 @@ class _CanvasScreenState extends State<CanvasScreen> {
     try {
       final canvasData = _canvasBloc.serializeCurrentStrokes();
       final noteId = _existingNote?.id ?? const Uuid().v4();
-
-      // 捕获快照和缩略图
-      String? snapshotPath;
-      final snapshotBytes = await _captureCanvas();
-      if (snapshotBytes != null) {
-        snapshotPath = await ImageStorage.saveSnapshot(snapshotBytes, noteId);
-      }
-
-      final thumbnailBytes = await _captureThumbnail();
-      if (thumbnailBytes != null) {
-        await ImageStorage.saveThumbnail(thumbnailBytes, noteId);
-      }
-
+      final snapshotPath = await _saveCanvasImages(noteId);
       final now = DateTime.now();
+      final recognizedText = _ocrResult.isNotEmpty ? _ocrResult : null;
 
-      if (_existingNote != null) {
-        // 更新已有笔记
-        await DatabaseHelper.instance.updateNote(_existingNote!.id, {
-          'updated_at': now.millisecondsSinceEpoch,
-          'canvas_data': canvasData,
-          'snapshot_image_path': snapshotPath ?? _existingNote!.snapshotImagePath,
-          'recognized_text': _ocrResult.isNotEmpty ? _ocrResult : null,
-        });
+      await _upsertNote(
+        noteId: noteId,
+        canvasData: canvasData,
+        snapshotPath: snapshotPath,
+        recognizedText: recognizedText,
+        now: now,
+      );
 
-        // 更新条目：先删旧的再插新的
-        if (_ocrResult.isNotEmpty) {
-          await DatabaseHelper.instance.deleteNoteEntries(_existingNote!.id);
-          await _saveEntries(_existingNote!.id, _ocrResult);
-        }
-
-        setState(() {
-          _existingNote = _existingNote!.copyWith(
-            updatedAt: now,
-            canvasData: canvasData,
-            snapshotImagePath: snapshotPath ?? _existingNote!.snapshotImagePath,
-            recognizedText: _ocrResult.isNotEmpty ? _ocrResult : null,
-          );
-        });
-      } else {
-        // 创建新笔记
-        final noteMap = {
-          'id': noteId,
-          'notebook_id': 'default-notebook',
-          'created_at': now.millisecondsSinceEpoch,
-          'updated_at': now.millisecondsSinceEpoch,
-          'canvas_data': canvasData,
-          'snapshot_image_path': snapshotPath,
-          'recognized_text': _ocrResult.isNotEmpty ? _ocrResult : null,
-        };
-        await DatabaseHelper.instance.insertNote(noteMap);
-
-        if (_ocrResult.isNotEmpty) {
-          await _saveEntries(noteId, _ocrResult);
-        }
-
-        setState(() {
-          _existingNote = Note(
-            id: noteId,
-            notebookId: 'default-notebook',
-            createdAt: now,
-            updatedAt: now,
-            canvasData: canvasData,
-            snapshotImagePath: snapshotPath,
-            recognizedText: _ocrResult.isNotEmpty ? _ocrResult : null,
-          );
-        });
-      }
+      await _replaceEntries(noteId, recognizedText);
 
       if (mounted) {
         context.read<NoteListBloc>().add(LoadNotes());
@@ -348,6 +294,81 @@ class _CanvasScreenState extends State<CanvasScreen> {
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  Future<String?> _saveCanvasImages(String noteId) async {
+    String? snapshotPath;
+
+    final snapshotBytes = await _captureCanvas();
+    if (snapshotBytes != null) {
+      snapshotPath = await ImageStorage.saveSnapshot(snapshotBytes, noteId);
+    }
+
+    final thumbnailBytes = await _captureThumbnail();
+    if (thumbnailBytes != null) {
+      await ImageStorage.saveThumbnail(thumbnailBytes, noteId);
+    }
+
+    return snapshotPath;
+  }
+
+  Future<void> _upsertNote({
+    required String noteId,
+    required Uint8List canvasData,
+    required String? snapshotPath,
+    required String? recognizedText,
+    required DateTime now,
+  }) async {
+    if (_existingNote != null) {
+      await DatabaseHelper.instance.updateNote(_existingNote!.id, {
+        'updated_at': now.millisecondsSinceEpoch,
+        'canvas_data': canvasData,
+        'snapshot_image_path': snapshotPath ?? _existingNote!.snapshotImagePath,
+        'recognized_text': recognizedText,
+      });
+
+      setState(() {
+        _existingNote = _existingNote!.copyWith(
+          updatedAt: now,
+          canvasData: canvasData,
+          snapshotImagePath: snapshotPath ?? _existingNote!.snapshotImagePath,
+          recognizedText: recognizedText,
+        );
+      });
+      return;
+    }
+
+    await DatabaseHelper.instance.insertNote({
+      'id': noteId,
+      'notebook_id': 'default-notebook',
+      'created_at': now.millisecondsSinceEpoch,
+      'updated_at': now.millisecondsSinceEpoch,
+      'canvas_data': canvasData,
+      'snapshot_image_path': snapshotPath,
+      'recognized_text': recognizedText,
+    });
+
+    setState(() {
+      _existingNote = Note(
+        id: noteId,
+        notebookId: 'default-notebook',
+        createdAt: now,
+        updatedAt: now,
+        canvasData: canvasData,
+        snapshotImagePath: snapshotPath,
+        recognizedText: recognizedText,
+      );
+    });
+  }
+
+  Future<void> _replaceEntries(String noteId, String? recognizedText) async {
+    await DatabaseHelper.instance.deleteNoteEntries(noteId);
+
+    if (recognizedText == null || recognizedText.isEmpty) {
+      return;
+    }
+
+    await _saveEntries(noteId, recognizedText);
   }
 
   /// 将 OCR 结果解析为条目并存储到数据库

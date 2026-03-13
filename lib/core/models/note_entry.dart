@@ -24,6 +24,44 @@ class NoteEntry extends Equatable {
     this.memoText,
   });
 
+  factory NoteEntry.fromMap(Map<String, dynamic> map) {
+    final typeString = (map['type'] as String?) ?? 'memo';
+    final type = NoteEntryType.values.firstWhere(
+      (value) => value.name == typeString,
+      orElse: () => NoteEntryType.memo,
+    );
+
+    final amountString = map['amount'] as String?;
+    final eventDateMillis = map['event_date'] as int?;
+    final isCompletedRaw = map['is_completed'];
+    final isCompleted = isCompletedRaw == 1 || isCompletedRaw == true;
+
+    return NoteEntry(
+      id: map['id'] as String,
+      type: type,
+      rawText: (map['raw_text'] as String?) ?? '',
+      expense: type == NoteEntryType.expense && amountString != null
+          ? ExpenseRecord(
+              amount: Decimal.parse(amountString),
+              category: (map['category'] as String?) ?? '其他',
+              description: (map['raw_text'] as String?) ?? '',
+            )
+          : null,
+      event: type == NoteEntryType.event
+          ? EventRecord(
+              title: (map['event_title'] as String?) ?? ((map['raw_text'] as String?) ?? ''),
+              date: eventDateMillis != null
+                  ? DateTime.fromMillisecondsSinceEpoch(eventDateMillis)
+                  : null,
+              isCompleted: isCompleted,
+            )
+          : null,
+      memoText: type == NoteEntryType.memo
+          ? (map['memo_text'] as String?) ?? (map['raw_text'] as String?)
+          : null,
+    );
+  }
+
   @override
   List<Object?> get props => [id, type, rawText, expense, event, memoText];
 }
