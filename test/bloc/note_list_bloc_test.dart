@@ -35,6 +35,7 @@ Future<void> setUpInMemoryDatabase() async {
             updated_at INTEGER NOT NULL,
             canvas_data BLOB,
             snapshot_image_path TEXT,
+            thumbnail_image_path TEXT,
             recognized_text TEXT,
             FOREIGN KEY (notebook_id) REFERENCES notebooks (id) ON DELETE CASCADE
           )
@@ -138,6 +139,7 @@ void main() {
         'updated_at': now,
         'canvas_data': null,
         'snapshot_image_path': null,
+        'thumbnail_image_path': '/tmp/existing-thumb.png',
         'recognized_text': '已有笔记内容',
       });
 
@@ -148,6 +150,7 @@ void main() {
       expect(bloc.state.status, equals(NoteListStatus.loaded));
       expect(bloc.state.notes.length, equals(1));
       expect(bloc.state.notes.first.id, equals('existing-note'));
+      expect(bloc.state.notes.first.thumbnailImagePath, equals('/tmp/existing-thumb.png'));
 
       await bloc.close();
     });
