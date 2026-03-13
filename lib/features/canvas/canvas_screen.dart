@@ -26,12 +26,18 @@ class CanvasScreen extends StatefulWidget {
   final String? noteId;
   final VoidCallback? onSave;
   final Function(String)? onOcrComplete;
+  final CanvasOcrService? ocrService;
+  final OcrEngine? ocrEngineOverride;
+  final Future<Uint8List?> Function()? captureCanvasForOcr;
 
   const CanvasScreen({
     super.key,
     this.noteId,
     this.onSave,
     this.onOcrComplete,
+    this.ocrService,
+    this.ocrEngineOverride,
+    this.captureCanvasForOcr,
   });
 
   @override
@@ -55,7 +61,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _canvasBloc = CanvasBloc();
     _canvasLoadService = CanvasLoadService(databaseHelper: DatabaseHelper.instance);
     _canvasSaveService = CanvasSaveService(databaseHelper: DatabaseHelper.instance);
-    _canvasOcrService = CanvasOcrService();
+    _canvasOcrService = widget.ocrService ?? CanvasOcrService();
     _initOcrEngine();
     if (widget.noteId != null) {
       _loadExistingNote();
@@ -64,7 +70,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   Future<void> _initOcrEngine() async {
     try {
-      _ocrEngine = OcrEngineFactory.createForPlatform();
+      _ocrEngine = widget.ocrEngineOverride ?? OcrEngineFactory.createForPlatform();
       final available = await _ocrEngine!.isAvailable();
       if (!available) {
         _ocrEngine = null;
@@ -315,7 +321,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
     final result = await _canvasOcrService.recognize(
       ocrEngine: _ocrEngine,
-      imageBytes: await _captureCanvas(pixelRatio: 2.0),
+      imageBytes: widget.captureCanvasForOcr != null
+          ? await widget.captureCanvasForOcr!()
+          : await _captureCanvas(pixelRatio: 2.0),
     );
 
     if (!mounted) return;

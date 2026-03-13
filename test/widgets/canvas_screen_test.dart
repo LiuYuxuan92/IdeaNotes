@@ -1,6 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:idea_notes/core/ocr/ocr_engine.dart';
 import 'package:idea_notes/features/canvas/canvas_screen.dart';
+import 'package:idea_notes/features/canvas/services/canvas_ocr_service.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -67,6 +71,40 @@ Future<void> _setUpInMemoryDatabase() async {
   );
 
   DatabaseHelper.injectDatabase(db);
+}
+
+class _FakeOcrEngine implements OcrEngine {
+  @override
+  String get engineName => 'fake';
+
+  @override
+  Future<bool> isAvailable() async => true;
+
+  @override
+  Future<List<String>> recognizeText(Uint8List imageBytes) async => const [];
+
+  @override
+  Future<List<String>> recognizeTextFromFile(String imagePath) async => const ['识别成功', '第二行'];
+
+  @override
+  void dispose() {}
+}
+
+class _FakeFailOcrEngine implements OcrEngine {
+  @override
+  String get engineName => 'fake-fail';
+
+  @override
+  Future<bool> isAvailable() async => true;
+
+  @override
+  Future<List<String>> recognizeText(Uint8List imageBytes) async => throw Exception('fail');
+
+  @override
+  Future<List<String>> recognizeTextFromFile(String imagePath) async => throw Exception('fail');
+
+  @override
+  void dispose() {}
 }
 
 Future<void> _insertNote({
@@ -210,6 +248,45 @@ void main() {
       expect(entries.length, 1);
       expect(entries.first['raw_text'], '记得买牛奶');
       expect(entries.first['type'], 'event');
+    });
+
+    testWidgets('OCR 成功后结果区更新并触发 onOcrComplete', (tester) async {
+      String? completedText;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CanvasScreen(
+            ocrEngineOverride: _FakeOcrEngine(),
+            captureCanvasForOcr: () async => Uint8List.fromList([1, 2, 3]),
+            onOcrComplete: (text) => completedText = text,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.photo_camera));
+      await tester.pumpAndSettle();
+
+      expect(find.text('识别成功\n第二行'), findsWidgets);
+      expect(completedText, '识别成功\n第二行');
+    });
+
+    testWidgets('OCR 失败后结果区显示错误提示并结束识别状态', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CanvasScreen(
+            ocrEngineOverride: _FakeFailOcrEngine(),
+            captureCanvasForOcr: () async => Uint8List.fromList([1, 2, 3]),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.photo_camera));
+      await tester.pumpAndSettle();
+
+      expect(find.text('识别失败，请重试'), findsWidgets);
+      expect(find.byIcon(Icons.photo_camera), findsOneWidget);
     });
   });
 }
