@@ -184,5 +184,32 @@ void main() {
       expect(find.byIcon(Icons.redo), findsOneWidget);
       expect(find.byIcon(Icons.delete_outline), findsOneWidget);
     });
+
+    testWidgets('保存编辑后的 OCR 文本会更新数据库 note 内容', (tester) async {
+      await _insertNote(id: 'note-save-db', recognizedText: '旧识别结果');
+
+      await tester.pumpWidget(
+        const MaterialApp(home: CanvasScreen(noteId: 'note-save-db')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.edit));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '记得买牛奶');
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.save));
+      await tester.pumpAndSettle();
+
+      final note = await DatabaseHelper.instance.getNote('note-save-db');
+      final entries = await DatabaseHelper.instance.getNoteEntries('note-save-db');
+
+      expect(note, isNotNull);
+      expect(note!['recognized_text'], '记得买牛奶');
+      expect(entries.length, 1);
+      expect(entries.first['raw_text'], '记得买牛奶');
+      expect(entries.first['type'], 'event');
+    });
   });
 }
