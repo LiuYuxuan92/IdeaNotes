@@ -14,6 +14,7 @@ import '../../core/models/note.dart';
 import '../../core/ocr/ocr_engine.dart';
 import '../../core/storage/database_helper.dart';
 import '../../core/ocr/vision_ocr.dart';
+import 'services/canvas_load_service.dart';
 import 'services/canvas_ocr_service.dart';
 import 'services/canvas_save_service.dart';
 import '../../shared/widgets/ocr_result_banner.dart';
@@ -44,6 +45,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   CanvasEditorState _editorState = const CanvasEditorState();
   late final CanvasBloc _canvasBloc;
   OcrEngine? _ocrEngine;
+  late final CanvasLoadService _canvasLoadService;
   late final CanvasSaveService _canvasSaveService;
   late final CanvasOcrService _canvasOcrService;
 
@@ -51,6 +53,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   void initState() {
     super.initState();
     _canvasBloc = CanvasBloc();
+    _canvasLoadService = CanvasLoadService(databaseHelper: DatabaseHelper.instance);
     _canvasSaveService = CanvasSaveService(databaseHelper: DatabaseHelper.instance);
     _canvasOcrService = CanvasOcrService();
     _initOcrEngine();
@@ -72,19 +75,18 @@ class _CanvasScreenState extends State<CanvasScreen> {
   }
 
   Future<void> _loadExistingNote() async {
-    final noteData = await DatabaseHelper.instance.getNote(widget.noteId!);
-    if (noteData != null) {
-      final note = Note.fromMap(noteData);
-      setState(() {
-        _editorState = _editorState.copyWith(
-          existingNote: note,
-          ocrResult: note.recognizedText ?? '',
-        );
-      });
-      // 恢复画布笔画
-      if (note.canvasData != null && note.canvasData!.isNotEmpty) {
-        _canvasBloc.loadFromData(Uint8List.fromList(note.canvasData!));
-      }
+    final result = await _canvasLoadService.load(widget.noteId!);
+    if (result.note == null) return;
+
+    setState(() {
+      _editorState = _editorState.copyWith(
+        existingNote: result.note,
+        ocrResult: result.ocrResult,
+      );
+    });
+
+    if (result.canvasData != null) {
+      _canvasBloc.loadFromData(result.canvasData!);
     }
   }
 
