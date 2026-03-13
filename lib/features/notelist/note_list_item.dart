@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../core/models/note.dart';
+import '../../core/models/note_entry.dart';
 
 /// 笔记列表项组件
 /// 显示缩略图、日期、摘要等信息
@@ -41,7 +42,7 @@ class NoteListItem extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 日期
+                    // 顶部：日期 + 删除
                     Row(
                       children: [
                         Icon(
@@ -57,7 +58,6 @@ class NoteListItem extends StatelessWidget {
                           ),
                         ),
                         const Spacer(),
-                        // 删除按钮
                         if (onDelete != null)
                           IconButton(
                             icon: Icon(
@@ -75,6 +75,9 @@ class NoteListItem extends StatelessWidget {
                     const SizedBox(height: 4),
                     // 摘要内容
                     _buildSummary(theme),
+                    const SizedBox(height: 8),
+                    // 底部统计行
+                    _buildStatsRow(theme),
                   ],
                 ),
               ),
@@ -163,6 +166,76 @@ class NoteListItem extends StatelessWidget {
     } else {
       return '${date.month}/${date.day}';
     }
+  }
+
+  Widget _buildStatsRow(ThemeData theme) {
+    final text = note.recognizedText;
+    final charCount = text?.trim().isNotEmpty == true ? text!.trim().length : 0;
+    
+    // 优先用 entries 数据，如果没有就用轻量级解析
+    int expenseCount = 0, eventCount = 0, memoCount = 0;
+    
+    if (note.entries.isNotEmpty) {
+      expenseCount = note.entries.where((e) => e.type == NoteEntryType.expense).length;
+      eventCount = note.entries.where((e) => e.type == NoteEntryType.event).length;
+      memoCount = note.entries.where((e) => e.type == NoteEntryType.memo).length;
+    } else if (text != null && text.isNotEmpty) {
+      // 轻量级启发式解析
+      final lines = text.split('\n').where((l) => l.trim().isNotEmpty).toList();
+      for (final line in lines) {
+        // 消费：包含金额模式如 ¥100、100元、100块
+        if (RegExp(r'[¥¥]\s*\d|[\d]+\s*(元|块|圆|美元)').hasMatch(line)) {
+          expenseCount++;
+        } 
+        // 事项：包含时间或todo标记
+        else if (RegExp(r'\d{1,2}[:点时]|\d{1,2}[/-]\d{1,2}|[]【】|TODO|FIXME').hasMatch(line)) {
+          eventCount++;
+        } 
+        // 其他视为备忘
+        else {
+          memoCount++;
+        }
+      }
+    }
+
+    final hasStats = charCount > 0 || expenseCount > 0 || eventCount > 0 || memoCount > 0;
+    if (!hasStats) return const SizedBox.shrink();
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        if (charCount > 0)
+          _buildStatChip('$charCount 字', Icons.text_fields, Colors.blue.shade400),
+        if (expenseCount > 0)
+          _buildStatChip('$expenseCount 消费', Icons.attach_money, Colors.orange.shade600),
+        if (eventCount > 0)
+          _buildStatChip('$eventCount 事项', Icons.event, Colors.purple.shade400),
+        if (memoCount > 0)
+          _buildStatChip('$memoCount 备忘', Icons.note, Colors.green.shade500),
+      ],
+    );
+  }
+
+  Widget _buildStatChip(String text, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
   }
 
   String _padZero(int value) => value.toString().padLeft(2, '0');
