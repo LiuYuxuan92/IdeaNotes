@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -14,6 +13,7 @@ import '../../core/models/note.dart';
 import '../../core/ocr/ocr_engine.dart';
 import '../../core/storage/database_helper.dart';
 import '../../core/ocr/vision_ocr.dart';
+import 'services/canvas_ocr_service.dart';
 import 'services/canvas_save_service.dart';
 import '../../shared/widgets/ocr_result_banner.dart';
 import '../notelist/bloc/note_list_bloc.dart';
@@ -47,12 +47,14 @@ class _CanvasScreenState extends State<CanvasScreen> {
   late final CanvasBloc _canvasBloc;
   OcrEngine? _ocrEngine;
   late final CanvasSaveService _canvasSaveService;
+  late final CanvasOcrService _canvasOcrService;
 
   @override
   void initState() {
     super.initState();
     _canvasBloc = CanvasBloc();
     _canvasSaveService = CanvasSaveService(databaseHelper: DatabaseHelper.instance);
+    _canvasOcrService = CanvasOcrService();
     _initOcrEngine();
     if (widget.noteId != null) {
       _loadExistingNote();
@@ -301,48 +303,20 @@ class _CanvasScreenState extends State<CanvasScreen> {
       _ocrResult = '正在识别...';
     });
 
-    try {
-      if (_ocrEngine == null) {
-        // OCR 引擎不可用，提示用户
-        setState(() {
-          _ocrResult = 'OCR 引擎不可用，请确认设备支持文字识别功能';
-        });
-        return;
-      }
+    final result = await _canvasOcrService.recognize(
+      ocrEngine: _ocrEngine,
+      imageBytes: await _captureCanvas(pixelRatio: 2.0),
+    );
 
-      // 捕获画布为图片
-      final imageBytes = await _captureCanvas(pixelRatio: 2.0);
-      if (imageBytes == null) {
-        setState(() {
-          _ocrResult = '识别失败，无法捕获画布图像';
-        });
-        return;
-      }
+    if (!mounted) return;
 
-      // 将图片保存为临时文件，供 OCR 引擎使用
-      final tempDir = await Directory.systemTemp.createTemp('ocr_');
-      final tempFile = File('${tempDir.path}/canvas.png');
-      await tempFile.writeAsBytes(imageBytes);
+    setState(() {
+      _ocrResult = result.success ? result.text : (result.errorMessage ?? '识别失败，请重试');
+      _isRecognizing = false;
+    });
 
-      final lines = await _ocrEngine!.recognizeTextFromFile(tempFile.path);
-      final result = lines.join('\n');
-
-      // 清理临时文件
-      try {
-        await tempDir.delete(recursive: true);
-      } catch (_) {}
-
-      setState(() {
-        _ocrResult = result;
-      });
-
-      widget.onOcrComplete?.call(result);
-    } catch (e) {
-      setState(() {
-        _ocrResult = '识别失败，请重试';
-      });
-    } finally {
-      if (mounted) setState(() => _isRecognizing = false);
+    if (result.success) {
+      widget.onOcrComplete?.call(result.text);
     }
   }
 
