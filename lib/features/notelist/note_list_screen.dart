@@ -43,10 +43,9 @@ class _NoteListScreenState extends State<NoteListScreen> {
         builder: (context, state) {
           return Column(
             children: [
-              // 搜索框
               if (_isSearching) _buildSearchBar(),
-              
-              // 笔记列表
+              if (state.status == NoteListStatus.loaded && state.notes.isNotEmpty)
+                _buildOverviewBar(context, state),
               Expanded(
                 child: _buildContent(state),
               ),
@@ -54,11 +53,46 @@ class _NoteListScreenState extends State<NoteListScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: _createNewNote,
         tooltip: '新建笔记',
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: const Text('新建'),
       ),
+    );
+  }
+
+  Widget _buildOverviewBar(BuildContext context, NoteListState state) {
+    final total = state.notes.length;
+    final hasSearch = state.searchQuery.isNotEmpty;
+    final filtered = state.filteredNotes.length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.35),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _buildChip(hasSearch ? '搜索结果 $filtered 条' : '共 $total 条笔记'),
+          if (hasSearch)
+            _buildChip('关键词：${state.searchQuery}'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(text, style: const TextStyle(fontSize: 13)),
     );
   }
 
