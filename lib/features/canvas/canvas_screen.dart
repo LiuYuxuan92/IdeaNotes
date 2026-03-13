@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'bloc/canvas_bloc.dart';
 import 'canvas_toolbar.dart';
+import 'models/canvas_editor_state.dart';
 import 'widgets/canvas_painter.dart';
 import '../../core/models/note.dart';
 import '../../core/ocr/ocr_engine.dart';
@@ -40,10 +41,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   final GlobalKey _canvasRepaintKey = GlobalKey();
   List<Offset> _currentPoints = [];
   bool _isDrawing = false;
-  String _ocrResult = '';
-  bool _isSaving = false;
-  bool _isRecognizing = false;
-  Note? _existingNote;
+  CanvasEditorState _editorState = const CanvasEditorState();
   late final CanvasBloc _canvasBloc;
   OcrEngine? _ocrEngine;
   late final CanvasSaveService _canvasSaveService;
@@ -78,8 +76,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (noteData != null) {
       final note = Note.fromMap(noteData);
       setState(() {
-        _existingNote = note;
-        _ocrResult = note.recognizedText ?? '';
+        _editorState = _editorState.copyWith(
+          existingNote: note,
+          ocrResult: note.recognizedText ?? '',
+        );
       });
       // 恢复画布笔画
       if (note.canvasData != null && note.canvasData!.isNotEmpty) {
@@ -104,23 +104,23 @@ class _CanvasScreenState extends State<CanvasScreen> {
           title: const Text('手写笔记'),
           actions: [
             IconButton(
-              icon: _isRecognizing
+              icon: _editorState.isRecognizing
                   ? const SizedBox(
                       width: 20, height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.photo_camera),
-              onPressed: _isRecognizing ? null : _runOcr,
+              onPressed: _editorState.isRecognizing ? null : _runOcr,
               tooltip: 'OCR 识别',
             ),
             IconButton(
-              icon: _isSaving
+              icon: _editorState.isSaving
                   ? const SizedBox(
                       width: 20, height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.save),
-              onPressed: _isSaving ? null : _saveNote,
+              onPressed: _editorState.isSaving ? null : _saveNote,
               tooltip: '保存',
             ),
           ],
@@ -164,7 +164,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                   Expanded(
                     flex: 3,
                     child: OcrResultBanner(
-                      result: _ocrResult,
+                      result: _editorState.ocrResult,
                       onCopy: _copyOcrResult,
                       onEdit: _editOcrResult,
                     ),
@@ -260,22 +260,24 @@ class _CanvasScreenState extends State<CanvasScreen> {
   }
 
   Future<void> _saveNote() async {
-    setState(() => _isSaving = true);
+    setState(() {
+      _editorState = _editorState.copyWith(isSaving: true);
+    });
 
     try {
       final savedNote = await _canvasSaveService.save(
         CanvasSaveInput(
-          existingNote: _existingNote,
+          existingNote: _editorState.existingNote,
           canvasData: _canvasBloc.serializeCurrentStrokes(),
           snapshotBytes: await _captureCanvas(),
           thumbnailBytes: await _captureThumbnail(),
-          recognizedText: _ocrResult,
+          recognizedText: _editorState.ocrResult,
           now: DateTime.now(),
         ),
       );
 
       setState(() {
-        _existingNote = savedNote;
+        _editorState = _editorState.copyWith(existingNote: savedNote);
       });
 
       if (mounted) {
@@ -293,14 +295,20 @@ class _CanvasScreenState extends State<CanvasScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isSaving = false);
+      if (mounted) {
+        setState(() {
+          _editorState = _editorState.copyWith(isSaving: false);
+        });
+      }
     }
   }
 
   Future<void> _runOcr() async {
     setState(() {
-      _isRecognizing = true;
-      _ocrResult = '正在识别...';
+      _editorState = _editorState.copyWith(
+        isRecognizing: true,
+        ocrResult: '正在识别...',
+      );
     });
 
     final result = await _canvasOcrService.recognize(
@@ -311,8 +319,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (!mounted) return;
 
     setState(() {
-      _ocrResult = result.success ? result.text : (result.errorMessage ?? '识别失败，请重试');
-      _isRecognizing = false;
+      _editorState = _editorState.copyWith(
+        ocrResult: result.success ? result.text : (result.errorMessage ?? '识别失败，请重试'),
+        isRecognizing: false,
+      );
     });
 
     if (result.success) {
@@ -321,8 +331,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
   }
 
   Future<void> _copyOcrResult() async {
-    if (_ocrResult.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: _ocrResult));
+    if (_editorState.ocrResult.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: _editorState.ocrResult));
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('已复制到剪贴板')),
@@ -331,7 +341,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   }
 
   void _editOcrResult() {
-    final controller = TextEditingController(text: _ocrResult);
+    final controller = TextEditingController(text: _editorState.ocrResult);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -348,7 +358,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
           TextButton(
             onPressed: () {
               setState(() {
-                _ocrResult = controller.text;
+                _editorState = _editorState.copyWith(ocrResult: controller.text);
               });
               Navigator.pop(ctx);
             },
