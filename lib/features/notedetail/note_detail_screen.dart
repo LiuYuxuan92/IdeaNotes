@@ -19,7 +19,7 @@ class NoteDetailScreen extends StatefulWidget {
 class _NoteDetailScreenState extends State<NoteDetailScreen> {
   Uint8List? _snapshotBytes;
   String _recognizedText = '';
-  List<dynamic> _entries = [];
+  List<NoteEntry> _entries = [];
   bool _isLoading = true;
 
   @override
@@ -71,8 +71,11 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 手写图片
+                  _buildOverviewCard(context),
+                  const SizedBox(height: 16),
                   if (_snapshotBytes != null) ...[
+                    _buildSectionTitle(context, '手写原稿'),
+                    const SizedBox(height: 8),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Image.memory(
@@ -83,18 +86,11 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
                     ),
                     const SizedBox(height: 16),
                   ],
-
-                  // 识别文本
                   if (_recognizedText.isNotEmpty) ...[
-                    const Text(
-                      '识别文本',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    _buildSectionTitle(context, '识别文本'),
                     const SizedBox(height: 8),
                     Container(
+                      width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: Colors.grey[100],
@@ -102,27 +98,77 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
                       ),
                       child: Text(
                         _recognizedText,
-                        style: const TextStyle(fontSize: 14),
+                        style: const TextStyle(fontSize: 14, height: 1.5),
                       ),
                     ),
                     const SizedBox(height: 16),
                   ],
-
-                  // 解析结果
                   if (_entries.isNotEmpty) ...[
-                    const Text(
-                      '解析结果',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    _buildSectionTitle(context, '解析结果'),
                     const SizedBox(height: 8),
                     ..._entries.map((entry) => EntryRow(entry: entry)),
                   ],
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildOverviewCard(BuildContext context) {
+    final expenseCount = _entries.where((e) => e.type == NoteEntryType.expense).length;
+    final eventCount = _entries.where((e) => e.type == NoteEntryType.event).length;
+    final memoCount = _entries.where((e) => e.type == NoteEntryType.memo).length;
+    final totalChars = _recognizedText.trim().isEmpty ? 0 : _recognizedText.trim().length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '笔记概览',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildOverviewChip('消费 $expenseCount'),
+              _buildOverviewChip('事项 $eventCount'),
+              _buildOverviewChip('备忘 $memoCount'),
+              _buildOverviewChip('识别字数 $totalChars'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverviewChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(text),
+    );
+  }
+
+  Widget _buildSectionTitle(BuildContext context, String title) {
+    return Text(
+      title,
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
     );
   }
 
