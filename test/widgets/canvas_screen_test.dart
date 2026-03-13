@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:idea_notes/features/canvas/canvas_screen.dart';
-import 'package:idea_notes/features/canvas/bloc/canvas_bloc.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -71,6 +69,23 @@ Future<void> _setUpInMemoryDatabase() async {
   DatabaseHelper.injectDatabase(db);
 }
 
+Future<void> _insertNote({
+  required String id,
+  required String recognizedText,
+}) async {
+  final now = DateTime.now().millisecondsSinceEpoch;
+  await DatabaseHelper.instance.insertNote({
+    'id': id,
+    'notebook_id': 'default-notebook',
+    'created_at': now,
+    'updated_at': now,
+    'canvas_data': null,
+    'snapshot_image_path': null,
+    'thumbnail_image_path': null,
+    'recognized_text': recognizedText,
+  });
+}
+
 void main() {
   group('CanvasScreen widget', () {
     setUp(() async {
@@ -94,7 +109,7 @@ void main() {
       expect(find.byIcon(Icons.save), findsOneWidget);
     });
 
-    testWidgets('点击编辑按钮在无识别结果时不会打开编辑弹窗', (tester) async {
+    testWidgets('无识别结果时点击编辑按钮不会打开编辑弹窗', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: CanvasScreen()),
       );
@@ -104,6 +119,59 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('编辑识别结果'), findsNothing);
+    });
+
+    testWidgets('有识别结果时可以打开编辑弹窗', (tester) async {
+      await _insertNote(id: 'note-edit', recognizedText: '旧识别结果');
+
+      await tester.pumpWidget(
+        const MaterialApp(home: CanvasScreen(noteId: 'note-edit')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('旧识别结果'), findsWidgets);
+
+      await tester.tap(find.byIcon(Icons.edit));
+      await tester.pumpAndSettle();
+
+      expect(find.text('编辑识别结果'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
+    });
+
+    testWidgets('编辑后 OCR 结果区域内容更新', (tester) async {
+      await _insertNote(id: 'note-update', recognizedText: '旧识别结果');
+
+      await tester.pumpWidget(
+        const MaterialApp(home: CanvasScreen(noteId: 'note-update')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.edit));
+      await tester.pumpAndSettle();
+
+      final textField = find.byType(TextField);
+      expect(textField, findsOneWidget);
+      await tester.enterText(textField, '新的 OCR 文本');
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('编辑识别结果'), findsNothing);
+      expect(find.text('新的 OCR 文本'), findsWidgets);
+    });
+
+    testWidgets('点击清除按钮会弹出确认框', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: CanvasScreen()),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.delete_outline));
+      await tester.pumpAndSettle();
+
+      expect(find.text('清除画布'), findsOneWidget);
+      expect(find.text('确定要清除所有内容吗？此操作不可撤销。'), findsOneWidget);
+      expect(find.text('取消'), findsOneWidget);
+      expect(find.text('清除'), findsOneWidget);
     });
 
     testWidgets('工具栏显示撤销/重做与清除入口', (tester) async {
