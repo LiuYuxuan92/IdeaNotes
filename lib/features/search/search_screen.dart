@@ -46,7 +46,10 @@ class _SearchScreenState extends State<SearchScreen> {
             _debounce?.cancel();
             context.read<NoteListBloc>().add(SearchNotes(value));
           },
-          onChanged: _onSearchChanged,
+          onChanged: (value) {
+            setState(() {});
+            _onSearchChanged(value);
+          },
         ),
         actions: [
           if (_searchController.text.isNotEmpty)
@@ -56,19 +59,20 @@ class _SearchScreenState extends State<SearchScreen> {
                 _searchController.clear();
                 _debounce?.cancel();
                 context.read<NoteListBloc>().add(const SearchNotes(''));
+                setState(() {});
               },
             ),
         ],
       ),
       body: BlocBuilder<NoteListBloc, NoteListState>(
         builder: (context, state) {
-          return _buildBody(state);
+          return _buildBody(context, state);
         },
       ),
     );
   }
 
-  Widget _buildBody(NoteListState state) {
+  Widget _buildBody(BuildContext context, NoteListState state) {
     final query = state.searchQuery;
 
     if (query.isEmpty) {
@@ -103,23 +107,53 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: state.filteredNotes.length,
-      itemBuilder: (context, index) {
-        final note = state.filteredNotes[index];
-        return NoteListItem(
-          note: note,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => NoteDetailScreen(note: note),
-              ),
-            );
-          },
-        );
-      },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildInfoChip(context, '关键词：$query'),
+              _buildInfoChip(context, '结果 ${state.filteredNotes.length} 条'),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: state.filteredNotes.length,
+            itemBuilder: (context, index) {
+              final note = state.filteredNotes[index];
+              return NoteListItem(
+                note: note,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => NoteDetailScreen(note: note),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInfoChip(BuildContext context, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(text),
     );
   }
 }
