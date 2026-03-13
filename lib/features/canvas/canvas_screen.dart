@@ -6,17 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:uuid/uuid.dart';
 
 import 'bloc/canvas_bloc.dart';
 import 'canvas_toolbar.dart';
 import 'widgets/canvas_painter.dart';
 import '../../core/models/note.dart';
-import '../../core/parser/entry_parser.dart';
 import '../../core/ocr/ocr_engine.dart';
 import '../../core/storage/database_helper.dart';
-import '../../core/storage/image_storage.dart';
 import '../../core/ocr/vision_ocr.dart';
+import 'services/canvas_save_service.dart';
 import '../../shared/widgets/ocr_result_banner.dart';
 import '../notelist/bloc/note_list_bloc.dart';
 
@@ -38,16 +36,6 @@ class CanvasScreen extends StatefulWidget {
   State<CanvasScreen> createState() => _CanvasScreenState();
 }
 
-class _CanvasImagePaths {
-  final String? snapshotPath;
-  final String? thumbnailPath;
-
-  const _CanvasImagePaths({
-    this.snapshotPath,
-    this.thumbnailPath,
-  });
-}
-
 class _CanvasScreenState extends State<CanvasScreen> {
   final GlobalKey _canvasRepaintKey = GlobalKey();
   List<Offset> _currentPoints = [];
@@ -58,11 +46,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
   Note? _existingNote;
   late final CanvasBloc _canvasBloc;
   OcrEngine? _ocrEngine;
+  late final CanvasSaveService _canvasSaveService;
 
   @override
   void initState() {
     super.initState();
     _canvasBloc = CanvasBloc();
+    _canvasSaveService = CanvasSaveService(databaseHelper: DatabaseHelper.instance);
     _initOcrEngine();
     if (widget.noteId != null) {
       _loadExistingNote();
@@ -271,22 +261,20 @@ class _CanvasScreenState extends State<CanvasScreen> {
     setState(() => _isSaving = true);
 
     try {
-      final canvasData = _canvasBloc.serializeCurrentStrokes();
-      final noteId = _existingNote?.id ?? const Uuid().v4();
-      final imagePaths = await _saveCanvasImages(noteId);
-      final now = DateTime.now();
-      final recognizedText = _ocrResult.isNotEmpty ? _ocrResult : null;
-
-      await _upsertNote(
-        noteId: noteId,
-        canvasData: canvasData,
-        snapshotPath: imagePaths.snapshotPath,
-        thumbnailPath: imagePaths.thumbnailPath,
-        recognizedText: recognizedText,
-        now: now,
+      final savedNote = await _canvasSaveService.save(
+        CanvasSaveInput(
+          existingNote: _existingNote,
+          canvasData: _canvasBloc.serializeCurrentStrokes(),
+          snapshotBytes: await _captureCanvas(),
+          thumbnailBytes: await _captureThumbnail(),
+          recognizedText: _ocrResult,
+          now: DateTime.now(),
+        ),
       );
 
-      await _replaceEntries(noteId, recognizedText);
+      setState(() {
+        _existingNote = savedNote;
+      });
 
       if (mounted) {
         context.read<NoteListBloc>().add(LoadNotes());
@@ -304,110 +292,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
-    }
-  }
-
-  Future<_CanvasImagePaths> _saveCanvasImages(String noteId) async {
-    String? snapshotPath;
-    String? thumbnailPath;
-
-    final snapshotBytes = await _captureCanvas();
-    if (snapshotBytes != null) {
-      snapshotPath = await ImageStorage.saveSnapshot(snapshotBytes, noteId);
-    }
-
-    final thumbnailBytes = await _captureThumbnail();
-    if (thumbnailBytes != null) {
-      thumbnailPath = await ImageStorage.saveThumbnail(thumbnailBytes, noteId);
-    }
-
-    return _CanvasImagePaths(
-      snapshotPath: snapshotPath,
-      thumbnailPath: thumbnailPath,
-    );
-  }
-
-  Future<void> _upsertNote({
-    required String noteId,
-    required Uint8List canvasData,
-    required String? snapshotPath,
-    required String? thumbnailPath,
-    required String? recognizedText,
-    required DateTime now,
-  }) async {
-    if (_existingNote != null) {
-      await DatabaseHelper.instance.updateNote(_existingNote!.id, {
-        'updated_at': now.millisecondsSinceEpoch,
-        'canvas_data': canvasData,
-        'snapshot_image_path': snapshotPath ?? _existingNote!.snapshotImagePath,
-        'thumbnail_image_path': thumbnailPath ?? _existingNote!.thumbnailImagePath,
-        'recognized_text': recognizedText,
-      });
-
-      setState(() {
-        _existingNote = _existingNote!.copyWith(
-          updatedAt: now,
-          canvasData: canvasData,
-          snapshotImagePath: snapshotPath ?? _existingNote!.snapshotImagePath,
-          thumbnailImagePath: thumbnailPath ?? _existingNote!.thumbnailImagePath,
-          recognizedText: recognizedText,
-        );
-      });
-      return;
-    }
-
-    await DatabaseHelper.instance.insertNote({
-      'id': noteId,
-      'notebook_id': 'default-notebook',
-      'created_at': now.millisecondsSinceEpoch,
-      'updated_at': now.millisecondsSinceEpoch,
-      'canvas_data': canvasData,
-      'snapshot_image_path': snapshotPath,
-      'thumbnail_image_path': thumbnailPath,
-      'recognized_text': recognizedText,
-    });
-
-    setState(() {
-      _existingNote = Note(
-        id: noteId,
-        notebookId: 'default-notebook',
-        createdAt: now,
-        updatedAt: now,
-        canvasData: canvasData,
-        snapshotImagePath: snapshotPath,
-        thumbnailImagePath: thumbnailPath,
-        recognizedText: recognizedText,
-      );
-    });
-  }
-
-  Future<void> _replaceEntries(String noteId, String? recognizedText) async {
-    await DatabaseHelper.instance.deleteNoteEntries(noteId);
-
-    if (recognizedText == null || recognizedText.isEmpty) {
-      return;
-    }
-
-    await _saveEntries(noteId, recognizedText);
-  }
-
-  /// 将 OCR 结果解析为条目并存储到数据库
-  Future<void> _saveEntries(String noteId, String ocrText) async {
-    final entries = EntryParser.parseMultiLine(ocrText);
-    for (final entry in entries) {
-      await DatabaseHelper.instance.insertNoteEntry({
-        'id': entry.id,
-        'note_id': noteId,
-        'type': entry.type.name,
-        'raw_text': entry.rawText,
-        'amount': entry.expense?.amount.toString(),
-        'category': entry.expense?.category,
-        'event_title': entry.event?.title,
-        'event_date': entry.event?.date?.millisecondsSinceEpoch,
-        'is_completed': (entry.event?.isCompleted ?? false) ? 1 : 0,
-        'memo_text': entry.memoText,
-        'created_at': DateTime.now().millisecondsSinceEpoch,
-      });
     }
   }
 
