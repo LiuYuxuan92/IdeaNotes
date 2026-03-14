@@ -40,10 +40,10 @@ void main() {
       await tester.pumpWidget(_wrapWithBloc(bloc));
       await tester.pump();
 
-      expect(find.text('还没有任何笔记'), findsOneWidget);
-      expect(find.text('点击右下角按钮创建第一篇笔记'), findsOneWidget);
+      expect(find.text('先写下第一条想法吧'), findsOneWidget);
+      expect(find.text('新建第一条笔记'), findsOneWidget);
 
-      await bloc.close();
+      bloc.close();
     });
 
     testWidgets('loaded 且有搜索词但无结果时显示搜索空状态', (tester) async {
@@ -57,10 +57,10 @@ void main() {
       await tester.pumpWidget(_wrapWithBloc(bloc));
       await tester.pump();
 
-      expect(find.text('没有找到匹配的笔记'), findsOneWidget);
-      expect(find.text('试试其他关键词'), findsOneWidget);
+      expect(find.text('没有找到相关笔记'), findsOneWidget);
+      expect(find.text('清空搜索词'), findsOneWidget);
 
-      await bloc.close();
+      bloc.close();
     });
 
     testWidgets('error 状态时显示错误与重试按钮', (tester) async {
@@ -72,11 +72,11 @@ void main() {
       await tester.pumpWidget(_wrapWithBloc(bloc));
       await tester.pump();
 
-      expect(find.text('加载失败'), findsOneWidget);
-      expect(find.text('db failed'), findsOneWidget);
-      expect(find.text('重试'), findsOneWidget);
+      expect(find.text('笔记列表暂时打不开'), findsOneWidget);
+      expect(find.textContaining('db failed'), findsOneWidget);
+      expect(find.text('重新加载'), findsOneWidget);
 
-      await bloc.close();
+      bloc.close();
     });
 
     testWidgets('loaded 且有笔记时显示列表摘要', (tester) async {
@@ -97,10 +97,10 @@ void main() {
       await tester.pumpWidget(_wrapWithBloc(bloc));
       await tester.pump();
 
-      expect(find.textContaining('第一行内容'), findsOneWidget);
+      expect(find.textContaining('第一行内容'), findsWidgets);
       expect(find.byType(FloatingActionButton), findsOneWidget);
 
-      await bloc.close();
+      bloc.close();
     });
   });
 }

@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
@@ -6,17 +7,47 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:idea_notes/features/notelist/bloc/note_list_bloc.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
 
+
+DynamicLibrary _openSqlite() {
+  const candidates = [
+    '/usr/lib64/libsqlite3.so.0',
+    '/usr/lib/x86_64-linux-gnu/libsqlite3.so.0',
+    '/lib/x86_64-linux-gnu/libsqlite3.so.0',
+    'libsqlite3.so',
+  ];
+
+  for (final path in candidates) {
+    if (path.startsWith('/') && !File(path).existsSync()) {
+      continue;
+    }
+
+    try {
+      return DynamicLibrary.open(path);
+    } catch (_) {}
+  }
+
+  throw StateError('Unable to load sqlite3 dynamic library');
+}
+
+void _ffiInit() {
+  open.overrideForAll(_openSqlite);
+}
+
+final _testDatabaseFactory = createDatabaseFactoryFfi(
+  ffiInit: _ffiInit,
+  noIsolate: true,
+);
+
 /// 初始化内存数据库并注入到 DatabaseHelper 单例，用于测试。
 Future<void> setUpInMemoryDatabase() async {
-  sqfliteFfiInit();
-  databaseFactory = databaseFactoryFfi;
+  databaseFactory = _testDatabaseFactory;
 
   // 关闭可能残留的旧连接
   try {
     await DatabaseHelper.instance.close();
   } catch (_) {}
 
-  final db = await databaseFactoryFfi.openDatabase(
+  final db = await _testDatabaseFactory.openDatabase(
     inMemoryDatabasePath,
     options: OpenDatabaseOptions(
       version: 1,
@@ -78,12 +109,7 @@ void main() {
     late DatabaseHelper dbHelper;
 
     setUpAll(() {
-      open.overrideFor(
-        OperatingSystem.linux,
-        () => DynamicLibrary.open('/usr/lib64/libsqlite3.so.0'),
-      );
-      sqfliteFfiInit();
-      databaseFactory = databaseFactoryFfi;
+      databaseFactory = _testDatabaseFactory;
     });
 
     setUp(() async {

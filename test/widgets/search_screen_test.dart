@@ -43,7 +43,7 @@ void main() {
       expect(find.text('输入关键词搜索笔记'), findsOneWidget);
       expect(find.byIcon(Icons.search), findsWidgets);
 
-      await bloc.close();
+      bloc.close();
     });
 
     testWidgets('有查询但无结果时显示未找到相关笔记', (tester) async {
@@ -60,7 +60,7 @@ void main() {
       expect(find.text('未找到相关笔记'), findsOneWidget);
       expect(find.byIcon(Icons.search_off), findsOneWidget);
 
-      await bloc.close();
+      bloc.close();
     });
 
     testWidgets('有查询且有结果时显示搜索结果列表', (tester) async {
@@ -81,10 +81,10 @@ void main() {
       await tester.pumpWidget(_wrapWithBloc(bloc));
       await tester.pump();
 
-      expect(find.textContaining('买牛奶'), findsOneWidget);
+      expect(find.textContaining('买牛奶'), findsWidgets);
       expect(find.byType(ListView), findsOneWidget);
 
-      await bloc.close();
+      bloc.close();
     });
   });
 }

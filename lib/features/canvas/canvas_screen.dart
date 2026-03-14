@@ -5,31 +5,39 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../app/design_system.dart';
 import '../../core/models/note.dart';
 import '../../core/ocr/ocr_engine.dart';
 import '../../core/ocr/vision_ocr.dart';
-import '../../core/parser/entry_parser.dart';
 import '../../core/storage/database_helper.dart';
-import '../../core/storage/image_storage.dart';
 import '../../shared/widgets/ocr_result_banner.dart';
 import '../notelist/bloc/note_list_bloc.dart';
 import 'bloc/canvas_bloc.dart';
 import 'canvas_toolbar.dart';
 import 'widgets/canvas_painter.dart';
+import 'services/canvas_save_service.dart';
 
 class CanvasScreen extends StatefulWidget {
   final String? noteId;
   final VoidCallback? onSave;
   final Function(String)? onOcrComplete;
+  final OcrEngine? ocrEngineOverride;
+  final Future<Uint8List?> Function()? captureCanvasForOcr;
+  final Future<Uint8List?> Function()? captureCanvasForSave;
+  final Future<Uint8List?> Function()? captureThumbnailForSave;
+  final CanvasSaveService? saveServiceOverride;
 
   const CanvasScreen({
     super.key,
     this.noteId,
     this.onSave,
     this.onOcrComplete,
+    this.ocrEngineOverride,
+    this.captureCanvasForOcr,
+    this.captureCanvasForSave,
+    this.captureThumbnailForSave,
+    this.saveServiceOverride,
   });
 
   @override
@@ -61,7 +69,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   Future<void> _initOcrEngine() async {
     try {
-      _ocrEngine = OcrEngineFactory.createForPlatform();
+      _ocrEngine = widget.ocrEngineOverride ?? OcrEngineFactory.createForPlatform();
       final available = await _ocrEngine!.isAvailable();
       if (!available && mounted) {
         setState(() {
@@ -319,71 +327,31 @@ class _CanvasScreenState extends State<CanvasScreen> {
   Future<void> _saveNote() async {
     setState(() => _isSaving = true);
     try {
+      final saveService =
+          widget.saveServiceOverride ?? CanvasSaveService(databaseHelper: DatabaseHelper.instance);
       final canvasData = _canvasBloc.serializeCurrentStrokes();
-      final noteId = _existingNote?.id ?? const Uuid().v4();
-      String? snapshotPath = _existingNote?.snapshotImagePath;
+      final snapshotBytes = widget.captureCanvasForSave != null
+          ? await widget.captureCanvasForSave!.call()
+          : await _captureCanvas();
+      final thumbnailBytes = widget.captureThumbnailForSave != null
+          ? await widget.captureThumbnailForSave!.call()
+          : await _captureThumbnail();
 
-      final snapshotBytes = await _captureCanvas();
-      if (snapshotBytes != null) {
-        snapshotPath = await ImageStorage.saveSnapshot(snapshotBytes, noteId);
-      }
-
-      final thumbnailBytes = await _captureThumbnail();
-      if (thumbnailBytes != null) {
-        await ImageStorage.saveThumbnail(thumbnailBytes, noteId);
-      }
-
-      final now = DateTime.now();
-      final recognizedText =
-          _ocrResult.trim().isEmpty ? null : _ocrResult.trim();
-
-      if (_existingNote != null) {
-        await DatabaseHelper.instance.updateNote(_existingNote!.id, {
-          'updated_at': now.millisecondsSinceEpoch,
-          'canvas_data': canvasData,
-          'snapshot_image_path': snapshotPath,
-          'recognized_text': recognizedText,
-        });
-
-        await DatabaseHelper.instance.deleteNoteEntries(_existingNote!.id);
-        if (recognizedText != null) {
-          await _saveEntries(_existingNote!.id, recognizedText);
-        }
-
-        _existingNote = _existingNote!.copyWith(
-          updatedAt: now,
+      _existingNote = await saveService.save(
+        CanvasSaveInput(
+          existingNote: _existingNote,
           canvasData: canvasData,
-          snapshotImagePath: snapshotPath,
-          recognizedText: recognizedText,
-        );
-      } else {
-        await DatabaseHelper.instance.insertNote({
-          'id': noteId,
-          'notebook_id': 'default-notebook',
-          'created_at': now.millisecondsSinceEpoch,
-          'updated_at': now.millisecondsSinceEpoch,
-          'canvas_data': canvasData,
-          'snapshot_image_path': snapshotPath,
-          'recognized_text': recognizedText,
-        });
-
-        if (recognizedText != null) {
-          await _saveEntries(noteId, recognizedText);
-        }
-
-        _existingNote = Note(
-          id: noteId,
-          notebookId: 'default-notebook',
-          createdAt: now,
-          updatedAt: now,
-          canvasData: canvasData,
-          snapshotImagePath: snapshotPath,
-          recognizedText: recognizedText,
-        );
-      }
+          snapshotBytes: snapshotBytes,
+          thumbnailBytes: thumbnailBytes,
+          recognizedText: _ocrResult,
+          now: DateTime.now(),
+        ),
+      );
 
       if (!mounted) return;
-      context.read<NoteListBloc>().add(LoadNotes());
+      try {
+        context.read<NoteListBloc>().add(LoadNotes());
+      } catch (_) {}
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('笔记已保存，可以回到列表继续查看。')),
       );
@@ -396,25 +364,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
-    }
-  }
-
-  Future<void> _saveEntries(String noteId, String ocrText) async {
-    final entries = EntryParser.parseMultiLine(ocrText);
-    for (final entry in entries) {
-      await DatabaseHelper.instance.insertNoteEntry({
-        'id': entry.id,
-        'note_id': noteId,
-        'type': entry.type.name,
-        'raw_text': entry.rawText,
-        'amount': entry.expense?.amount.toString(),
-        'category': entry.expense?.category,
-        'event_title': entry.event?.title,
-        'event_date': entry.event?.date?.millisecondsSinceEpoch,
-        'is_completed': (entry.event?.isCompleted ?? false) ? 1 : 0,
-        'memo_text': entry.memoText,
-        'created_at': DateTime.now().millisecondsSinceEpoch,
-      });
     }
   }
 
@@ -436,7 +385,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
         return;
       }
 
-      final imageBytes = await _captureCanvas(pixelRatio: 2.0);
+      final imageBytes = widget.captureCanvasForOcr != null
+          ? await widget.captureCanvasForOcr!.call()
+          : await _captureCanvas(pixelRatio: 2.0);
       if (imageBytes == null) {
         setState(() {
           _ocrBannerState = OcrBannerState.error;

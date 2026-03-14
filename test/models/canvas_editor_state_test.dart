@@ -5,7 +5,7 @@ import 'package:idea_notes/features/canvas/models/canvas_editor_state.dart';
 void main() {
   group('CanvasEditorState', () {
     test('copyWith 能更新 editor 状态字段', () {
-      final initial = CanvasEditorState(
+      const initial = CanvasEditorState(
         ocrResult: '旧结果',
         isSaving: false,
         isRecognizing: false,

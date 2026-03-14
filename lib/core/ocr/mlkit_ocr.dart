@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import 'ocr_engine.dart';
 
@@ -25,7 +25,7 @@ class MlKitOcr implements OcrEngine {
       // _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
       _isInitialized = true;
     } catch (e) {
-      print('Failed to initialize MLKit: $e');
+      debugPrint('Failed to initialize MLKit: $e');
       _isInitialized = false;
     }
   }
@@ -50,7 +50,7 @@ class MlKitOcr implements OcrEngine {
     try {
       return _mockRecognizeText(imageBytes);
     } catch (e) {
-      print('MLKit OCR error: $e');
+      debugPrint('MLKit OCR error: $e');
       return [];
     }
   }
@@ -71,7 +71,7 @@ class MlKitOcr implements OcrEngine {
       }
       return [];
     } catch (e) {
-      print('MLKit OCR file error: $e');
+      debugPrint('MLKit OCR file error: $e');
       return [];
     }
   }

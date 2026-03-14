@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import 'mlkit_ocr.dart';
 import 'ocr_engine.dart';
@@ -19,7 +19,7 @@ class VisionOcr implements OcrEngine {
     try {
       _isInitialized = true;
     } catch (e) {
-      print('Failed to initialize Vision OCR: $e');
+      debugPrint('Failed to initialize Vision OCR: $e');
       _isInitialized = false;
     }
   }
@@ -44,7 +44,7 @@ class VisionOcr implements OcrEngine {
     try {
       return _mockRecognizeText(imageBytes);
     } catch (e) {
-      print('Vision OCR error: $e');
+      debugPrint('Vision OCR error: $e');
       return [];
     }
   }
@@ -65,7 +65,7 @@ class VisionOcr implements OcrEngine {
       }
       return [];
     } catch (e) {
-      print('Vision OCR file error: $e');
+      debugPrint('Vision OCR file error: $e');
       return [];
     }
   }

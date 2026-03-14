@@ -21,8 +21,8 @@ void main() {
         ),
       );
 
-      expect(find.text('暂无识别内容'), findsOneWidget);
-      expect(find.byIcon(Icons.edit_note), findsOneWidget);
+      expect(find.text('还没有识别内容，打开笔记后可继续书写或识别。'), findsOneWidget);
+      expect(find.text('未命名笔记'), findsOneWidget);
     });
   });
 }

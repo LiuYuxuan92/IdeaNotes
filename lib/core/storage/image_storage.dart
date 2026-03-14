@@ -1,5 +1,6 @@
 import 'dart:io';
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -109,7 +110,7 @@ class ImageStorage {
           await entity.delete();
         } catch (e) {
           // 忽略删除错误，继续删除其他文件
-          print('Failed to delete image: ${entity.path}, error: $e');
+          debugPrint('Failed to delete image: ${entity.path}, error: $e');
         }
       }
     }

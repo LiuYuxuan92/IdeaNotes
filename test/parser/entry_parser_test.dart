@@ -246,7 +246,7 @@ void main() {
 
   group('EntryParser - 多行解析测试', () {
     test('解析多行文本 - 包含花费、事项、备忘', () {
-      final text = '''买菜 35.5
+      const text = '''买菜 35.5
 明天去医院
 天气很好''';
 
@@ -269,7 +269,7 @@ void main() {
     });
 
     test('解析多行文本 - 包含空行', () {
-      final text = '''买菜 35.5
+      const text = '''买菜 35.5
 
 明天去医院
 
@@ -282,7 +282,7 @@ void main() {
     });
 
     test('解析多行文本 - 只有空行', () {
-      final text = '''
+      const text = '''
 
 ''';
 
@@ -292,7 +292,7 @@ void main() {
     });
 
     test('解析多行文本 - 纯空格行应跳过', () {
-      final text = '''买菜 35.5
+      const text = '''买菜 35.5
 
 明天去医院''';
 

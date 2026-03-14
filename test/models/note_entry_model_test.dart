@@ -5,7 +5,7 @@ import 'package:idea_notes/core/models/note_entry.dart';
 void main() {
   group('NoteEntry.fromMap', () {
     test('能正确还原 expense entry', () {
-      final entry = NoteEntry.fromMap({
+      final entry = NoteEntry.fromMap(const {
         'id': 'entry-expense',
         'type': 'expense',
         'raw_text': '买菜 35.5',
@@ -38,7 +38,7 @@ void main() {
     });
 
     test('能正确还原 memo entry', () {
-      final entry = NoteEntry.fromMap({
+      final entry = NoteEntry.fromMap(const {
         'id': 'entry-memo',
         'type': 'memo',
         'raw_text': '记一下灵感',
