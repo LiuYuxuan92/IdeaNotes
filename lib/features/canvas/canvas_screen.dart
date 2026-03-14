@@ -1,43 +1,35 @@
-import 'dart:typed_data';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:uuid/uuid.dart';
 
-import 'bloc/canvas_bloc.dart';
-import 'canvas_toolbar.dart';
-import 'models/canvas_editor_state.dart';
-import 'widgets/canvas_painter.dart';
+import '../../app/design_system.dart';
 import '../../core/models/note.dart';
 import '../../core/ocr/ocr_engine.dart';
-import '../../core/storage/database_helper.dart';
 import '../../core/ocr/vision_ocr.dart';
-import 'services/canvas_load_service.dart';
-import 'services/canvas_ocr_service.dart';
-import 'services/canvas_save_service.dart';
+import '../../core/parser/entry_parser.dart';
+import '../../core/storage/database_helper.dart';
+import '../../core/storage/image_storage.dart';
 import '../../shared/widgets/ocr_result_banner.dart';
 import '../notelist/bloc/note_list_bloc.dart';
+import 'bloc/canvas_bloc.dart';
+import 'canvas_toolbar.dart';
+import 'widgets/canvas_painter.dart';
 
-/// 手写画布主页面
-/// 70% 画布 / 30% OCR 结果分割布局
 class CanvasScreen extends StatefulWidget {
   final String? noteId;
   final VoidCallback? onSave;
   final Function(String)? onOcrComplete;
-  final CanvasOcrService? ocrService;
-  final OcrEngine? ocrEngineOverride;
-  final Future<Uint8List?> Function()? captureCanvasForOcr;
 
   const CanvasScreen({
     super.key,
     this.noteId,
     this.onSave,
     this.onOcrComplete,
-    this.ocrService,
-    this.ocrEngineOverride,
-    this.captureCanvasForOcr,
   });
 
   @override
@@ -46,22 +38,21 @@ class CanvasScreen extends StatefulWidget {
 
 class _CanvasScreenState extends State<CanvasScreen> {
   final GlobalKey _canvasRepaintKey = GlobalKey();
-  List<Offset> _currentPoints = [];
-  bool _isDrawing = false;
-  CanvasEditorState _editorState = const CanvasEditorState();
+  List<Offset> _currentPoints = <Offset>[];
   late final CanvasBloc _canvasBloc;
+
+  String _ocrResult = '';
+  String _ocrHelperText = '写完后点一下“识别”，再决定是否复制、编辑或保存。';
+  bool _isSaving = false;
+  bool _isRecognizing = false;
+  Note? _existingNote;
   OcrEngine? _ocrEngine;
-  late final CanvasLoadService _canvasLoadService;
-  late final CanvasSaveService _canvasSaveService;
-  late final CanvasOcrService _canvasOcrService;
+  OcrBannerState _ocrBannerState = OcrBannerState.idle;
 
   @override
   void initState() {
     super.initState();
     _canvasBloc = CanvasBloc();
-    _canvasLoadService = CanvasLoadService(databaseHelper: DatabaseHelper.instance);
-    _canvasSaveService = CanvasSaveService(databaseHelper: DatabaseHelper.instance);
-    _canvasOcrService = widget.ocrService ?? CanvasOcrService();
     _initOcrEngine();
     if (widget.noteId != null) {
       _loadExistingNote();
@@ -70,29 +61,42 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   Future<void> _initOcrEngine() async {
     try {
-      _ocrEngine = widget.ocrEngineOverride ?? OcrEngineFactory.createForPlatform();
+      _ocrEngine = OcrEngineFactory.createForPlatform();
       final available = await _ocrEngine!.isAvailable();
-      if (!available) {
-        _ocrEngine = null;
+      if (!available && mounted) {
+        setState(() {
+          _ocrEngine = null;
+          _ocrBannerState = OcrBannerState.warning;
+          _ocrHelperText = '当前设备暂不支持文字识别。你仍然可以保存手写内容，稍后再换设备识别。';
+        });
       }
-    } catch (e) {
-      _ocrEngine = null;
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _ocrEngine = null;
+          _ocrBannerState = OcrBannerState.warning;
+          _ocrHelperText = 'OCR 引擎暂时不可用。请先保存手写内容，稍后再尝试识别。';
+        });
+      }
     }
   }
 
   Future<void> _loadExistingNote() async {
-    final result = await _canvasLoadService.load(widget.noteId!);
-    if (result.note == null) return;
+    final noteData = await DatabaseHelper.instance.getNote(widget.noteId!);
+    if (noteData == null || !mounted) return;
 
+    final note = Note.fromMap(noteData);
     setState(() {
-      _editorState = _editorState.copyWith(
-        existingNote: result.note,
-        ocrResult: result.ocrResult,
-      );
+      _existingNote = note;
+      _ocrResult = note.recognizedText ?? '';
+      if (_ocrResult.trim().isNotEmpty) {
+        _ocrBannerState = OcrBannerState.success;
+        _ocrHelperText = '这是上次识别并保存的文本。你可以继续补写，再重新识别更新结果。';
+      }
     });
 
-    if (result.canvasData != null) {
-      _canvasBloc.loadFromData(result.canvasData!);
+    if (note.canvasData != null && note.canvasData!.isNotEmpty) {
+      _canvasBloc.loadFromData(Uint8List.fromList(note.canvasData!));
     }
   }
 
@@ -109,80 +113,129 @@ class _CanvasScreenState extends State<CanvasScreen> {
       value: _canvasBloc,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('手写笔记'),
+          title: Text(widget.noteId == null ? '新建手写笔记' : '继续编辑笔记'),
           actions: [
-            IconButton(
-              icon: _editorState.isRecognizing
-                  ? const SizedBox(
-                      width: 20, height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.photo_camera),
-              onPressed: _editorState.isRecognizing ? null : _runOcr,
-              tooltip: 'OCR 识别',
-            ),
-            IconButton(
-              icon: _editorState.isSaving
-                  ? const SizedBox(
-                      width: 20, height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save),
-              onPressed: _editorState.isSaving ? null : _saveNote,
-              tooltip: '保存',
-            ),
-          ],
-        ),
-        body: Column(
-          children: [
-            // 工具栏
-            const CanvasToolbar(),
-
-            // 主内容区域：70% 画布 / 30% OCR 结果
-            Expanded(
-              child: Column(
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Row(
                 children: [
-                  // 画布区域 (70%)
-                  Expanded(
-                    flex: 7,
-                    child: Container(
-                      margin: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: RepaintBoundary(
-                          key: _canvasRepaintKey,
-                          child: _buildCanvas(),
-                        ),
-                      ),
-                    ),
+                  IconButton(
+                    onPressed: _isRecognizing ? null : _runOcr,
+                    tooltip: '识别当前画布',
+                    icon: _isRecognizing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.text_snippet_outlined),
                   ),
-
-                  // OCR 结果区域 (30%)
-                  Expanded(
-                    flex: 3,
-                    child: OcrResultBanner(
-                      result: _editorState.ocrResult,
-                      onCopy: _copyOcrResult,
-                      onEdit: _editOcrResult,
-                    ),
+                  IconButton(
+                    onPressed: _isSaving ? null : _saveNote,
+                    tooltip: '保存当前笔记',
+                    icon: _isSaving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save_outlined),
                   ),
                 ],
               ),
             ),
           ],
         ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              const CanvasToolbar(),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: context.isLarge
+                      ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                                flex: 11, child: _buildCanvasPanel(context)),
+                            const SizedBox(width: 16),
+                            Expanded(
+                                flex: 7, child: _buildResultPanel(context)),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            Expanded(
+                                flex: 7, child: _buildCanvasPanel(context)),
+                            const SizedBox(height: 16),
+                            Expanded(
+                                flex: 4, child: _buildResultPanel(context)),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
+    );
+  }
+
+  Widget _buildCanvasPanel(BuildContext context) {
+    return AppSurface(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppSectionHeader(
+            eyebrow: '主画布',
+            title: '把注意力放在书写本身',
+            description: '先自由记录，再进行识别和整理。画布会保留完整手写笔迹。',
+            trailing: _CanvasStatusPill(noteId: _existingNote?.id),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(26),
+                border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant),
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFFFFFFFF), Color(0xFFFAFBFC)],
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(26),
+                child: RepaintBoundary(
+                  key: _canvasRepaintKey,
+                  child: _buildCanvas(),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultPanel(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: OcrResultBanner(
+            result: _ocrResult,
+            state: _ocrBannerState,
+            helperText: _ocrHelperText,
+            onCopy: _copyOcrResult,
+            onEdit: _editOcrResult,
+          ),
+        ),
+      ],
     );
   }
 
@@ -190,9 +243,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
     return BlocBuilder<CanvasBloc, CanvasState>(
       builder: (context, state) {
         return GestureDetector(
-          onPanStart: (details) => _onPanStart(context, details, state),
-          onPanUpdate: (details) => _onPanUpdate(context, details, state),
-          onPanEnd: (details) => _onPanEnd(context, state),
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (details) => _onPanStart(details),
+          onPanUpdate: (details) => _onPanUpdate(details),
+          onPanEnd: (_) => _onPanEnd(context, state),
           child: CustomPaint(
             painter: CanvasPainter(
               strokes: state.strokes,
@@ -208,171 +262,296 @@ class _CanvasScreenState extends State<CanvasScreen> {
     );
   }
 
-  void _onPanStart(BuildContext context, DragStartDetails details, CanvasState state) {
+  void _onPanStart(DragStartDetails details) {
     setState(() {
-      _isDrawing = true;
-      _currentPoints = [details.localPosition];
+      _currentPoints = <Offset>[details.localPosition];
     });
   }
 
-  void _onPanUpdate(BuildContext context, DragUpdateDetails details, CanvasState state) {
+  void _onPanUpdate(DragUpdateDetails details) {
     setState(() {
-      _currentPoints = [..._currentPoints, details.localPosition];
+      _currentPoints = <Offset>[..._currentPoints, details.localPosition];
     });
   }
 
   void _onPanEnd(BuildContext context, CanvasState state) {
     if (_currentPoints.isNotEmpty) {
-      context.read<CanvasBloc>().add(StrokeAdded(
-            points: _currentPoints,
-            color: state.currentColor,
-            strokeWidth: state.currentStrokeWidth,
-            isEraser: state.currentTool == CanvasTool.eraser,
-          ));
+      context.read<CanvasBloc>().add(
+            StrokeAdded(
+              points: _currentPoints,
+              color: state.currentColor,
+              strokeWidth: state.currentStrokeWidth,
+              isEraser: state.currentTool == CanvasTool.eraser,
+            ),
+          );
     }
     setState(() {
-      _isDrawing = false;
-      _currentPoints = [];
+      _currentPoints = <Offset>[];
     });
   }
 
-  /// 捕获画布为 PNG 字节
   Future<Uint8List?> _captureCanvas({double pixelRatio = 2.0}) async {
     try {
       final boundary = _canvasRepaintKey.currentContext?.findRenderObject()
           as RenderRepaintBoundary?;
       if (boundary == null) return null;
-
       final image = await boundary.toImage(pixelRatio: pixelRatio);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       return byteData?.buffer.asUint8List();
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
 
-  /// 生成缩略图（200x200）
   Future<Uint8List?> _captureThumbnail() async {
     try {
       final boundary = _canvasRepaintKey.currentContext?.findRenderObject()
           as RenderRepaintBoundary?;
       if (boundary == null) return null;
-
-      // 用较低的分辨率捕获
-      final image = await boundary.toImage(pixelRatio: 0.5);
+      final image = await boundary.toImage(pixelRatio: 0.6);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       return byteData?.buffer.asUint8List();
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
 
   Future<void> _saveNote() async {
-    setState(() {
-      _editorState = _editorState.copyWith(isSaving: true);
-    });
-
+    setState(() => _isSaving = true);
     try {
-      final savedNote = await _canvasSaveService.save(
-        CanvasSaveInput(
-          existingNote: _editorState.existingNote,
-          canvasData: _canvasBloc.serializeCurrentStrokes(),
-          snapshotBytes: await _captureCanvas(),
-          thumbnailBytes: await _captureThumbnail(),
-          recognizedText: _editorState.ocrResult,
-          now: DateTime.now(),
-        ),
-      );
+      final canvasData = _canvasBloc.serializeCurrentStrokes();
+      final noteId = _existingNote?.id ?? const Uuid().v4();
+      String? snapshotPath = _existingNote?.snapshotImagePath;
 
-      setState(() {
-        _editorState = _editorState.copyWith(existingNote: savedNote);
-      });
+      final snapshotBytes = await _captureCanvas();
+      if (snapshotBytes != null) {
+        snapshotPath = await ImageStorage.saveSnapshot(snapshotBytes, noteId);
+      }
 
-      if (mounted) {
-        context.read<NoteListBloc>().add(LoadNotes());
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('笔记已保存')),
-        );
-        widget.onSave?.call();
-        Navigator.pop(context);
+      final thumbnailBytes = await _captureThumbnail();
+      if (thumbnailBytes != null) {
+        await ImageStorage.saveThumbnail(thumbnailBytes, noteId);
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('保存失败: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _editorState = _editorState.copyWith(isSaving: false);
+
+      final now = DateTime.now();
+      final recognizedText =
+          _ocrResult.trim().isEmpty ? null : _ocrResult.trim();
+
+      if (_existingNote != null) {
+        await DatabaseHelper.instance.updateNote(_existingNote!.id, {
+          'updated_at': now.millisecondsSinceEpoch,
+          'canvas_data': canvasData,
+          'snapshot_image_path': snapshotPath,
+          'recognized_text': recognizedText,
         });
+
+        await DatabaseHelper.instance.deleteNoteEntries(_existingNote!.id);
+        if (recognizedText != null) {
+          await _saveEntries(_existingNote!.id, recognizedText);
+        }
+
+        _existingNote = _existingNote!.copyWith(
+          updatedAt: now,
+          canvasData: canvasData,
+          snapshotImagePath: snapshotPath,
+          recognizedText: recognizedText,
+        );
+      } else {
+        await DatabaseHelper.instance.insertNote({
+          'id': noteId,
+          'notebook_id': 'default-notebook',
+          'created_at': now.millisecondsSinceEpoch,
+          'updated_at': now.millisecondsSinceEpoch,
+          'canvas_data': canvasData,
+          'snapshot_image_path': snapshotPath,
+          'recognized_text': recognizedText,
+        });
+
+        if (recognizedText != null) {
+          await _saveEntries(noteId, recognizedText);
+        }
+
+        _existingNote = Note(
+          id: noteId,
+          notebookId: 'default-notebook',
+          createdAt: now,
+          updatedAt: now,
+          canvasData: canvasData,
+          snapshotImagePath: snapshotPath,
+          recognizedText: recognizedText,
+        );
       }
+
+      if (!mounted) return;
+      context.read<NoteListBloc>().add(LoadNotes());
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('笔记已保存，可以回到列表继续查看。')),
+      );
+      widget.onSave?.call();
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存失败，请稍后再试：$e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _saveEntries(String noteId, String ocrText) async {
+    final entries = EntryParser.parseMultiLine(ocrText);
+    for (final entry in entries) {
+      await DatabaseHelper.instance.insertNoteEntry({
+        'id': entry.id,
+        'note_id': noteId,
+        'type': entry.type.name,
+        'raw_text': entry.rawText,
+        'amount': entry.expense?.amount.toString(),
+        'category': entry.expense?.category,
+        'event_title': entry.event?.title,
+        'event_date': entry.event?.date?.millisecondsSinceEpoch,
+        'is_completed': (entry.event?.isCompleted ?? false) ? 1 : 0,
+        'memo_text': entry.memoText,
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+      });
     }
   }
 
   Future<void> _runOcr() async {
     setState(() {
-      _editorState = _editorState.copyWith(
-        isRecognizing: true,
-        ocrResult: '正在识别...',
-      );
+      _isRecognizing = true;
+      _ocrResult = '';
+      _ocrBannerState = OcrBannerState.processing;
+      _ocrHelperText = '正在读取当前画布。识别完成后，你可以直接复制或手动修正。';
     });
 
-    final result = await _canvasOcrService.recognize(
-      ocrEngine: _ocrEngine,
-      imageBytes: widget.captureCanvasForOcr != null
-          ? await widget.captureCanvasForOcr!()
-          : await _captureCanvas(pixelRatio: 2.0),
-    );
+    Directory? tempDir;
+    try {
+      if (_ocrEngine == null) {
+        setState(() {
+          _ocrBannerState = OcrBannerState.warning;
+          _ocrHelperText = '当前设备暂不支持文字识别。你仍然可以先保存手写内容。';
+        });
+        return;
+      }
 
-    if (!mounted) return;
+      final imageBytes = await _captureCanvas(pixelRatio: 2.0);
+      if (imageBytes == null) {
+        setState(() {
+          _ocrBannerState = OcrBannerState.error;
+          _ocrHelperText = '没有成功捕获到画布图像。请先确认画布已渲染完成，再重试一次。';
+        });
+        return;
+      }
 
-    setState(() {
-      _editorState = _editorState.copyWith(
-        ocrResult: result.success ? result.text : (result.errorMessage ?? '识别失败，请重试'),
-        isRecognizing: false,
-      );
-    });
+      tempDir = await Directory.systemTemp.createTemp('ideanotes_ocr_');
+      final tempFile = File('${tempDir.path}/canvas.png');
+      await tempFile.writeAsBytes(imageBytes);
 
-    if (result.success) {
-      widget.onOcrComplete?.call(result.text);
+      final lines = await _ocrEngine!.recognizeTextFromFile(tempFile.path);
+      final result = lines
+          .map((line) => line.trim())
+          .where((line) => line.isNotEmpty)
+          .join('\n');
+
+      setState(() {
+        _ocrResult = result;
+        if (result.isEmpty) {
+          _ocrBannerState = OcrBannerState.warning;
+          _ocrHelperText = '这次没有读到清晰文本。你可以写得更满一些，或把关键字写得更工整后再试。';
+        } else {
+          _ocrBannerState = OcrBannerState.success;
+          _ocrHelperText = '识别完成。建议先快速检查错字，再决定是否保存到笔记。';
+        }
+      });
+
+      widget.onOcrComplete?.call(result);
+    } catch (_) {
+      setState(() {
+        _ocrBannerState = OcrBannerState.error;
+        _ocrResult = '';
+        _ocrHelperText = '识别没有完成。你可以再试一次；如果持续失败，先保存当前手写内容。';
+      });
+    } finally {
+      if (tempDir != null) {
+        try {
+          await tempDir.delete(recursive: true);
+        } catch (_) {}
+      }
+      if (mounted) setState(() => _isRecognizing = false);
     }
   }
 
   Future<void> _copyOcrResult() async {
-    if (_editorState.ocrResult.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: _editorState.ocrResult));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已复制到剪贴板')),
-      );
-    }
+    if (_ocrResult.trim().isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: _ocrResult));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('识别文本已复制。')),
+    );
   }
 
   void _editOcrResult() {
-    final controller = TextEditingController(text: _editorState.ocrResult);
-    showDialog(
+    final controller = TextEditingController(text: _ocrResult);
+    showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('编辑识别结果'),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('编辑识别文本'),
         content: TextField(
-          maxLines: 8,
           controller: controller,
+          maxLines: 10,
+          minLines: 6,
+          decoration: const InputDecoration(hintText: '在这里修正识别结果'),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('先不改'),
           ),
           TextButton(
             onPressed: () {
               setState(() {
-                _editorState = _editorState.copyWith(ocrResult: controller.text);
+                _ocrResult = controller.text.trim();
+                _ocrBannerState = _ocrResult.isEmpty
+                    ? OcrBannerState.idle
+                    : OcrBannerState.success;
+                _ocrHelperText = _ocrResult.isEmpty
+                    ? '写完后点一下“识别”，再决定是否复制、编辑或保存。'
+                    : '你已手动调整识别文本，保存后会覆盖旧结果。';
               });
-              Navigator.pop(ctx);
+              Navigator.pop(dialogContext);
             },
-            child: const Text('保存'),
+            child: const Text('保存修改'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CanvasStatusPill extends StatelessWidget {
+  final String? noteId;
+
+  const _CanvasStatusPill({required this.noteId});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F4F6),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.lock_clock_outlined,
+              size: 14, color: AppColors.textSecondary),
+          const SizedBox(width: 6),
+          Text(
+            noteId == null ? '尚未保存' : '已载入历史内容',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ),

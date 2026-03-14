@@ -1,4 +1,7 @@
+import 'dart:ffi';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqlite3/open.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:idea_notes/features/notelist/bloc/note_list_bloc.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
@@ -75,6 +78,10 @@ void main() {
     late DatabaseHelper dbHelper;
 
     setUpAll(() {
+      open.overrideFor(
+        OperatingSystem.linux,
+        () => DynamicLibrary.open('/usr/lib64/libsqlite3.so.0'),
+      );
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     });

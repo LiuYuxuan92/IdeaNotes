@@ -1,7 +1,5 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
@@ -90,11 +88,11 @@ class CanvasUndoStackUpdated extends CanvasEvent {
 
 // ==================== Tool Enum ====================
 enum CanvasTool {
-  pen,      // 黑笔
-  bluePen,  // 蓝笔
-  redPen,   // 红笔
-  pencil,   // 铅笔
-  eraser,   // 橡皮
+  pen, // 黑笔
+  bluePen, // 蓝笔
+  redPen, // 红笔
+  pencil, // 铅笔
+  eraser, // 橡皮
 }
 
 // ==================== Drawing Stroke ====================
@@ -121,7 +119,8 @@ class DrawingStroke extends Equatable {
   factory DrawingStroke.fromJson(Map<String, dynamic> json) {
     return DrawingStroke(
       points: (json['points'] as List)
-          .map((p) => Offset((p['x'] as num).toDouble(), (p['y'] as num).toDouble()))
+          .map((p) =>
+              Offset((p['x'] as num).toDouble(), (p['y'] as num).toDouble()))
           .toList(),
       color: Color(json['color'] as int),
       strokeWidth: (json['strokeWidth'] as num).toDouble(),
@@ -138,7 +137,9 @@ class DrawingStroke extends Equatable {
   /// 从 Uint8List 反序列化笔画列表
   static List<DrawingStroke> deserializeStrokes(Uint8List data) {
     final jsonList = jsonDecode(utf8.decode(data)) as List;
-    return jsonList.map((j) => DrawingStroke.fromJson(j as Map<String, dynamic>)).toList();
+    return jsonList
+        .map((j) => DrawingStroke.fromJson(j as Map<String, dynamic>))
+        .toList();
   }
 
   @override
@@ -237,7 +238,8 @@ class CanvasBloc extends Bloc<CanvasEvent, CanvasState> {
     if (state.undoStack.isEmpty) return;
 
     final lastStroke = state.undoStack.last;
-    final newUndoStack = List<DrawingStroke>.from(state.undoStack)..removeLast();
+    final newUndoStack = List<DrawingStroke>.from(state.undoStack)
+      ..removeLast();
 
     emit(state.copyWith(
       strokes: List<DrawingStroke>.from(state.strokes)..removeLast(),
@@ -250,7 +252,8 @@ class CanvasBloc extends Bloc<CanvasEvent, CanvasState> {
     if (state.redoStack.isEmpty) return;
 
     final strokeToRedo = state.redoStack.last;
-    final newRedoStack = List<DrawingStroke>.from(state.redoStack)..removeLast();
+    final newRedoStack = List<DrawingStroke>.from(state.redoStack)
+      ..removeLast();
 
     emit(state.copyWith(
       strokes: [...state.strokes, strokeToRedo],

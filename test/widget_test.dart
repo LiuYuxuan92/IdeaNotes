@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:idea_notes/main.dart';
+import 'package:idea_notes/app/app.dart';
 
 void main() {
   testWidgets('IdeaNotes app smoke test', (WidgetTester tester) async {
@@ -17,7 +17,7 @@ void main() {
 
     // Verify that the app renders without crashing.
     expect(find.byType(MaterialApp), findsOneWidget);
-    
+
     // Verify basic UI elements are present (adjust based on your app's actual UI)
     // expect(find.text('IdeaNotes'), findsAny);
   });
@@ -25,7 +25,7 @@ void main() {
   testWidgets('Counter increments', (WidgetTester tester) async {
     // This is a placeholder test demonstrating Flutter test structure.
     // Replace with actual widget tests for your application.
-    
+
     // Example: Test a simple widget
     await tester.pumpWidget(
       const MaterialApp(

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../core/models/note.dart';
 import '../notedetail/note_detail_screen.dart';
 import '../notelist/note_list_item.dart';
 import '../notelist/bloc/note_list_bloc.dart';
