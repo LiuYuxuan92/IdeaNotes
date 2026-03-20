@@ -9,6 +9,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image/image.dart' as img;
 
 import '../../app/design_system.dart';
+import '../../core/extraction/deepseek_text_understanding_engine.dart';
 import '../../core/models/note.dart';
 import '../../core/ocr/ocr_engine.dart';
 import '../../core/ocr/vision_ocr.dart';
@@ -795,7 +796,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
     setState(() => _isSaving = true);
     try {
       final saveService = widget.saveServiceOverride ??
-          CanvasSaveService(databaseHelper: DatabaseHelper.instance);
+          CanvasSaveService(
+            databaseHelper: DatabaseHelper.instance,
+            textUnderstandingEngine: const DeepSeekTextUnderstandingEngine(),
+          );
       final canvasData = _canvasBloc.serializeCurrentStrokes();
       final snapshotBytes = widget.captureCanvasForSave != null
           ? await widget.captureCanvasForSave!.call()
