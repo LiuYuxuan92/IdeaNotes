@@ -7,6 +7,7 @@ import 'package:idea_notes/core/extraction/text_understanding_engine.dart';
 import 'package:idea_notes/core/models/note.dart';
 import 'package:idea_notes/core/models/note_entry.dart';
 import 'package:idea_notes/core/parser/entry_parser.dart';
+import 'package:idea_notes/core/parser/entry_text_rules.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
 import 'package:idea_notes/core/storage/entry_repository.dart';
 import 'package:idea_notes/core/storage/image_storage.dart';
@@ -31,14 +32,6 @@ class CanvasSaveInput {
 }
 
 class CanvasSaveService {
-  static final RegExp _babyKeywordPattern = RegExp(r'宝宝|孩子|小孩|儿子|女儿');
-  static final RegExp _vaccinationKeywordPattern = RegExp(r'疫苗|接种|打针');
-  static final RegExp _medicationKeywordPattern =
-      RegExp(r'吃药|用药|药片|药丸|退烧药|感冒药');
-  static final RegExp _healthKeywordPattern = RegExp(
-    r'宝宝|疫苗|接种|打针|复查|体检|医院|就诊|门诊|诊所|发烧|咳嗽|吃药|用药|药',
-  );
-
   final DatabaseHelper databaseHelper;
   final EntryRepository entryRepository;
   final String Function() createId;
@@ -321,7 +314,7 @@ class CanvasSaveService {
     required Note note,
   }) {
     if (entry.type != NoteEntryType.expense ||
-        !_healthKeywordPattern.hasMatch(entry.rawText)) {
+        !EntryTextRules.hasHealthKeyword(entry.rawText)) {
       return null;
     }
 
@@ -331,7 +324,7 @@ class CanvasSaveService {
     final category = _entryCategory(
       NoteEntry(
         id: entry.id,
-        type: NoteEntryType.memo,
+        type: NoteEntryType.health,
         rawText: entry.rawText,
         memoText: entry.rawText,
       ),
@@ -364,10 +357,10 @@ class CanvasSaveService {
   }
 
   ExtractionEntryType _relatedHealthType(String text) {
-    if (_vaccinationKeywordPattern.hasMatch(text)) {
+    if (EntryTextRules.hasVaccinationKeyword(text)) {
       return ExtractionEntryType.vaccination;
     }
-    if (_medicationKeywordPattern.hasMatch(text)) {
+    if (EntryTextRules.hasMedicationKeyword(text)) {
       return ExtractionEntryType.medication;
     }
     return ExtractionEntryType.healthRecord;
@@ -381,27 +374,30 @@ class CanvasSaveService {
         domain: 'finance',
       );
     }
-    if (_vaccinationKeywordPattern.hasMatch(text)) {
+    if (entry.type == NoteEntryType.health &&
+        EntryTextRules.hasVaccinationKeyword(text)) {
       return const _EntryClassification(
         entryType: ExtractionEntryType.vaccination,
         domain: 'health',
       );
     }
-    if (_medicationKeywordPattern.hasMatch(text)) {
+    if (entry.type == NoteEntryType.health &&
+        EntryTextRules.hasMedicationKeyword(text)) {
       return const _EntryClassification(
         entryType: ExtractionEntryType.medication,
         domain: 'health',
       );
     }
-    if (_healthKeywordPattern.hasMatch(text) &&
-        entry.type == NoteEntryType.memo) {
+    if (entry.type == NoteEntryType.health ||
+        (EntryTextRules.hasHealthKeyword(text) &&
+            entry.type == NoteEntryType.memo)) {
       return const _EntryClassification(
         entryType: ExtractionEntryType.healthRecord,
         domain: 'health',
       );
     }
     if (entry.type == NoteEntryType.event) {
-      return _healthKeywordPattern.hasMatch(text)
+      return EntryTextRules.hasHealthKeyword(text)
           ? const _EntryClassification(
               entryType: ExtractionEntryType.task,
               domain: 'health',
@@ -411,7 +407,7 @@ class CanvasSaveService {
               domain: 'life',
             );
     }
-    return _healthKeywordPattern.hasMatch(text)
+    return EntryTextRules.hasHealthKeyword(text)
         ? const _EntryClassification(
             entryType: ExtractionEntryType.healthRecord,
             domain: 'health',
@@ -435,6 +431,12 @@ class CanvasSaveService {
         return title;
       }
     }
+    if (entry.type == NoteEntryType.health) {
+      final memoText = entry.memoText?.trim();
+      if (memoText != null && memoText.isNotEmpty) {
+        return memoText;
+      }
+    }
     return _shortText(entry.rawText);
   }
 
@@ -445,7 +447,7 @@ class CanvasSaveService {
         return category;
       }
     }
-    if (entry.type == NoteEntryType.memo) {
+    if (entry.type == NoteEntryType.memo || entry.type == NoteEntryType.health) {
       final memoText = entry.memoText?.trim();
       if (memoText != null &&
           memoText.isNotEmpty &&
@@ -472,18 +474,24 @@ class CanvasSaveService {
     }
 
     final text = entry.rawText;
-    if (_vaccinationKeywordPattern.hasMatch(text)) {
+    if (EntryTextRules.hasVaccinationKeyword(text)) {
       return const ExtractionCategory(l1: '医疗', l2: '疫苗');
     }
+    if (EntryTextRules.hasMedicationKeyword(text)) {
+      return const ExtractionCategory(l1: '医疗', l2: '用药');
+    }
+    if (EntryTextRules.hasDigestiveKeyword(text)) {
+      return const ExtractionCategory(l1: '健康', l2: '排便');
+    }
     if (domain == 'health') {
-      return const ExtractionCategory(l1: '医疗');
+      return const ExtractionCategory(l1: '健康');
     }
     return null;
   }
 
   List<ExtractionSubject> _entrySubjects(String text) {
     final subjects = <ExtractionSubject>[];
-    if (_babyKeywordPattern.hasMatch(text)) {
+    if (EntryTextRules.hasBabyKeyword(text)) {
       subjects.add(
         const ExtractionSubject(
           name: '宝宝',
@@ -504,11 +512,17 @@ class CanvasSaveService {
     if (domain == 'health') {
       tags.add('健康');
     }
-    if (_babyKeywordPattern.hasMatch(text)) {
+    if (EntryTextRules.hasBabyKeyword(text)) {
       tags.add('宝宝');
     }
-    if (_vaccinationKeywordPattern.hasMatch(text)) {
+    if (EntryTextRules.hasVaccinationKeyword(text)) {
       tags.add('疫苗');
+    }
+    if (EntryTextRules.hasMedicationKeyword(text)) {
+      tags.add('用药');
+    }
+    if (EntryTextRules.hasDigestiveKeyword(text)) {
+      tags.add('排便');
     }
     if (category?.l2 != null && category!.l2!.trim().isNotEmpty) {
       tags.add(category.l2!.trim());
@@ -553,6 +567,9 @@ class CanvasSaveService {
     }
     if (entry.type == NoteEntryType.event) {
       return 0.88;
+    }
+    if (entry.type == NoteEntryType.health) {
+      return 0.86;
     }
     if (entryType == ExtractionEntryType.vaccination ||
         entryType == ExtractionEntryType.medication ||

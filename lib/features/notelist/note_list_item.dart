@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../app/design_system.dart';
 import '../../core/models/note.dart';
 import '../../core/models/note_entry.dart';
+import '../../core/parser/entry_parser.dart';
 
 class NoteListItem extends StatelessWidget {
   final Note note;
@@ -371,6 +372,7 @@ class _InsightRow extends StatelessWidget {
 
     var expenseCount = 0;
     var eventCount = 0;
+    var healthCount = 0;
     var memoCount = 0;
 
     if (note.entries.isNotEmpty) {
@@ -380,19 +382,29 @@ class _InsightRow extends StatelessWidget {
       eventCount = note.entries
           .where((entry) => entry.type == NoteEntryType.event)
           .length;
+      healthCount = note.entries
+          .where((entry) => entry.type == NoteEntryType.health)
+          .length;
       memoCount = note.entries
           .where((entry) => entry.type == NoteEntryType.memo)
           .length;
     } else if (text != null && text.isNotEmpty) {
       final lines = text.split('\n').where((line) => line.trim().isNotEmpty);
       for (final line in lines) {
-        if (RegExp(r'[¥￥]\s*\d|\d+\s*(元|块|圆|美元)').hasMatch(line)) {
-          expenseCount += 1;
-        } else if (RegExp(r'\d{1,2}[:点时]|\d{1,2}[/-]\d{1,2}|TODO|FIXME|待办')
-            .hasMatch(line)) {
-          eventCount += 1;
-        } else {
-          memoCount += 1;
+        final entry = EntryParser.parse(line);
+        switch (entry.type) {
+          case NoteEntryType.expense:
+            expenseCount += 1;
+            break;
+          case NoteEntryType.event:
+            eventCount += 1;
+            break;
+          case NoteEntryType.health:
+            healthCount += 1;
+            break;
+          case NoteEntryType.memo:
+            memoCount += 1;
+            break;
         }
       }
     }
@@ -422,6 +434,15 @@ class _InsightRow extends StatelessWidget {
           label: '$eventCount 事项',
           icon: Icons.event_note_rounded,
           color: const Color(0xFF6E7BC7),
+        ),
+      );
+    }
+    if (healthCount > 0) {
+      chips.add(
+        _StatChip(
+          label: '$healthCount 健康',
+          icon: Icons.health_and_safety_outlined,
+          color: AppColors.success,
         ),
       );
     }

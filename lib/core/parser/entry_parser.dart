@@ -1,6 +1,7 @@
 import 'package:uuid/uuid.dart';
 import '../models/note_entry.dart';
 import 'expense_extractor.dart';
+import 'entry_text_rules.dart';
 
 class EntryParser {
   static const _uuid = Uuid();
@@ -25,6 +26,12 @@ class EntryParser {
       return eventEntry;
     }
 
+    // 尝试解析为健康记录
+    final healthEntry = _tryParseHealth(text);
+    if (healthEntry != null) {
+      return healthEntry;
+    }
+
     // 默认为备忘
     return _createEntry(NoteEntryType.memo, text, memoText: text);
   }
@@ -34,15 +41,20 @@ class EntryParser {
     final amount = _expenseExtractor.extractAmount(text);
     if (amount != null) {
       final category = _expenseExtractor.matchCategory(text);
-      // 提取金额后的剩余文本作为描述
       var description = text
-          .replaceAll(RegExp(r'¥?\d+\.?\d*\s*元?'), '')
+          .replaceAll(
+            RegExp(
+              r'(?:花了?|花费|花销|用了?|消费|支出|付款|付了|买了?|报销)\s*',
+            ),
+            '',
+          )
+          .replaceAll(RegExp(r'¥?\s*\d+\.?\d*\s*元?'), '')
           .replaceAll(RegExp(r'\d+块\d*毛?'), '')
           .trim();
       if (description.isEmpty) {
         description = text;
       }
-      
+
       return _createEntry(
         NoteEntryType.expense,
         text,
@@ -61,7 +73,7 @@ class EntryParser {
 
   /// 尝试解析为事项
   static NoteEntry? _tryParseEvent(String text) {
-    final date = _parseDate(text);
+    final temporal = _parseTemporalInfo(text);
 
     // 检测明确的多字任务关键词
     final hasClearKeyword = _clearTaskKeywords.any((kw) => text.contains(kw));
@@ -71,39 +83,71 @@ class EntryParser {
 
     final hasTaskKeyword = hasClearKeyword || hasSingleYao;
 
-    if (date != null || hasTaskKeyword) {
-      // 提取日期和关键词后的剩余文本作为标题
-      var title = text
-          .replaceAll(RegExp(r'大后天|后天|明天'), '')
-          .replaceAll(RegExp(r'下下周[一二三四五六日]?'), '')
-          .replaceAll(RegExp(r'下周[一二三四五六日]?'), '')
-          .replaceAll(RegExp(r'(?<!下)周[一二三四五六日]'), '')
-          .replaceAll(RegExp(r'\d+月\d+日'), '')
-          .replaceAll(RegExp(r'\d+/\d+'), '')
-          .replaceAll(RegExp(r'记得|需要|别忘了|不要忘|别忘|提醒'), '')
-          .replaceAll(RegExp(r'(^|[，。！？、])要'), r'\1')
-          .trim();
+    final hasFutureCue = EntryTextRules.hasFutureRelativeCue(text) ||
+        (temporal.date != null && _isAfterDay(temporal.date!, temporal.today));
+    final hasSameDayScheduleCue =
+        (EntryTextRules.hasTodayCue(text) ||
+                EntryTextRules.hasTimeOfDayCue(text) ||
+                temporal.hasExplicitTime) &&
+            EntryTextRules.hasActionKeyword(text) &&
+            !EntryTextRules.hasCompletionCue(text);
+    final hasStandaloneExplicitTime =
+        temporal.hasExplicitTime &&
+            (EntryTextRules.hasActionKeyword(text) || hasTaskKeyword) &&
+            !EntryTextRules.hasCompletionCue(text);
 
-      if (title.isEmpty) {
-        title = text;
-      }
+    if (hasTaskKeyword ||
+        hasFutureCue ||
+        hasSameDayScheduleCue ||
+        hasStandaloneExplicitTime) {
+      var title = _cleanEventTitle(text);
+      title = title.isEmpty ? text : title;
 
       return _createEntry(
         NoteEntryType.event,
         text,
         event: EventRecord(
           title: title,
-          date: date,
+          date: temporal.date,
         ),
       );
     }
     return null;
   }
 
+  /// 尝试解析为健康记录
+  static NoteEntry? _tryParseHealth(String text) {
+    if (!EntryTextRules.hasHealthKeyword(text)) {
+      return null;
+    }
+
+    final memoText = _cleanHealthText(text);
+    return _createEntry(
+      NoteEntryType.health,
+      text,
+      memoText: memoText.isEmpty ? text : memoText,
+    );
+  }
+
   /// 解析日期
-  static DateTime? _parseDate(String text) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+  static DateTime? _parseDate(
+    String text, {
+    DateTime? now,
+  }) {
+    final current = now ?? DateTime.now();
+    final today = DateTime(current.year, current.month, current.day);
+
+    if (RegExp(r'今天|今日|今早|今晨|今晚').hasMatch(text)) {
+      return today;
+    }
+
+    if (text.contains('昨天') || text.contains('昨晚')) {
+      return today.subtract(const Duration(days: 1));
+    }
+
+    if (text.contains('前天')) {
+      return today.subtract(const Duration(days: 2));
+    }
 
     // 匹配 "大后天"（必须在"后天"之前检查）
     if (text.contains('大后天')) {
@@ -124,11 +168,11 @@ class EntryParser {
     final nextNextWeekMatch = RegExp(r'下下周([一二三四五六日])?').firstMatch(text);
     if (nextNextWeekMatch != null) {
       final dayOfWeek = nextNextWeekMatch.group(1);
-      int daysUntil = 14 - now.weekday + 1; // 下下周一
+      int daysUntil = 14 - current.weekday + 1; // 下下周一
 
       if (dayOfWeek != null) {
         final targetDay = _chineseToWeekday(dayOfWeek);
-        daysUntil = (14 - now.weekday + 1) + (targetDay - 1);
+        daysUntil = (14 - current.weekday + 1) + (targetDay - 1);
       }
 
       return today.add(Duration(days: daysUntil));
@@ -138,11 +182,11 @@ class EntryParser {
     final nextWeekMatch = RegExp(r'下周([一二三四五六日])?').firstMatch(text);
     if (nextWeekMatch != null) {
       final dayOfWeek = nextWeekMatch.group(1);
-      int daysUntilNextWeek = 7 - now.weekday + 1; // 下周一
+      int daysUntilNextWeek = 7 - current.weekday + 1; // 下周一
 
       if (dayOfWeek != null) {
         final targetDay = _chineseToWeekday(dayOfWeek);
-        daysUntilNextWeek = (7 - now.weekday + 1) + (targetDay - 1);
+        daysUntilNextWeek = (7 - current.weekday + 1) + (targetDay - 1);
       }
 
       return today.add(Duration(days: daysUntilNextWeek));
@@ -153,7 +197,7 @@ class EntryParser {
     if (thisWeekMatch != null) {
       final dayOfWeek = thisWeekMatch.group(1)!;
       final targetDay = _chineseToWeekday(dayOfWeek);
-      int daysUntil = targetDay - now.weekday;
+      int daysUntil = targetDay - current.weekday;
       if (daysUntil <= 0) daysUntil += 7; // 如果已过，取下周同一天
       return today.add(Duration(days: daysUntil));
     }
@@ -163,9 +207,10 @@ class EntryParser {
     if (monthDayMatch != null) {
       final month = int.parse(monthDayMatch.group(1)!);
       final day = int.parse(monthDayMatch.group(2)!);
-      var year = now.year;
-      if (month < now.month || (month == now.month && day < now.day)) {
-        year = now.year + 1;
+      var year = current.year;
+      if (month < current.month ||
+          (month == current.month && day < current.day)) {
+        year = current.year + 1;
       }
       return DateTime(year, month, day);
     }
@@ -174,9 +219,10 @@ class EntryParser {
     if (slashMatch != null) {
       final month = int.parse(slashMatch.group(1)!);
       final day = int.parse(slashMatch.group(2)!);
-      var year = now.year;
-      if (month < now.month || (month == now.month && day < now.day)) {
-        year = now.year + 1;
+      var year = current.year;
+      if (month < current.month ||
+          (month == current.month && day < current.day)) {
+        year = current.year + 1;
       }
       return DateTime(year, month, day);
     }
@@ -196,6 +242,69 @@ class EntryParser {
       '日': 7,
     };
     return map[chinese] ?? 1;
+  }
+
+  static _TemporalInfo _parseTemporalInfo(String text) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final baseDate = _parseDate(text, now: now);
+    final clockTime = EntryTextRules.extractClockTime(text);
+
+    var date = baseDate;
+    if (date == null &&
+        (EntryTextRules.hasTodayCue(text) || clockTime != null) &&
+        !EntryTextRules.hasPastCue(text)) {
+      date = today;
+    }
+
+    if (date != null && clockTime != null) {
+      date = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        clockTime.hour,
+        clockTime.minute,
+      );
+    }
+
+    return _TemporalInfo(
+      today: today,
+      date: date,
+      hasExplicitTime: clockTime != null,
+    );
+  }
+
+  static String _cleanEventTitle(String text) {
+    return text
+        .replaceAll(
+          RegExp(r'大后天|后天|明天|今天|今日|今早|今晨|今晚|昨天|前天|昨晚'),
+          '',
+        )
+        .replaceAll(RegExp(r'下下周[一二三四五六日]?'), '')
+        .replaceAll(RegExp(r'下周[一二三四五六日]?'), '')
+        .replaceAll(RegExp(r'(?<!下)周[一二三四五六日]'), '')
+        .replaceAll(RegExp(r'\d+月\d+日'), '')
+        .replaceAll(RegExp(r'\d+/\d+'), '')
+        .replaceAll(RegExp(r'(?<!\d)\d{1,2}[:：]\d{1,2}(?!\d)'), '')
+        .replaceAll(RegExp(r'(?<!\d)\d{1,2}\s*(?:点|时)(?:半|\d{1,2}分?)?(?!\d)'), '')
+        .replaceAll(RegExp(r'凌晨|早上|上午|中午|下午|傍晚|晚上'), '')
+        .replaceAll(RegExp(r'记得|需要|别忘了|不要忘|别忘|提醒'), '')
+        .replaceAll(RegExp(r'(^|[，。！？、])要'), r'\1')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static String _cleanHealthText(String text) {
+    return text
+        .replaceAll(RegExp(r'今天|今日|今早|今晨|昨晚|昨天|前天'), '')
+        .replaceAll(RegExp(r'凌晨|早上|上午|中午|下午|傍晚|晚上|今晚'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static bool _isAfterDay(DateTime value, DateTime today) {
+    final day = DateTime(value.year, value.month, value.day);
+    return day.isAfter(today);
   }
 
   /// 创建 NoteEntry
@@ -225,4 +334,16 @@ class EntryParser {
     
     return lines.map((line) => parse(line)).toList();
   }
+}
+
+class _TemporalInfo {
+  final DateTime today;
+  final DateTime? date;
+  final bool hasExplicitTime;
+
+  const _TemporalInfo({
+    required this.today,
+    required this.date,
+    required this.hasExplicitTime,
+  });
 }

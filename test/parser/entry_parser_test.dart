@@ -244,6 +244,49 @@ void main() {
     });
   });
 
+  group('EntryParser - 健康与时间规则测试', () {
+    test('解析 今天花了7200 - 识别为花费', () {
+      final entry = EntryParser.parse('今天花了7200');
+
+      expect(entry.type, equals(NoteEntryType.expense));
+      expect(entry.expense, isNotNull);
+      expect(entry.expense!.amount, equals(Decimal.parse('7200')));
+    });
+
+    test('解析 明天5点拉屎 - 识别为事项并保留时点', () {
+      final entry = EntryParser.parse('明天5点拉屎');
+
+      expect(entry.type, equals(NoteEntryType.event));
+      expect(entry.event, isNotNull);
+      expect(entry.event!.title, equals('拉屎'));
+      expect(entry.event!.date, isNotNull);
+      expect(entry.event!.date!.hour, equals(5));
+      expect(entry.event!.date!.minute, equals(0));
+    });
+
+    test('解析 明天早上去药店 - 识别为事项', () {
+      final entry = EntryParser.parse('明天早上去药店');
+
+      expect(entry.type, equals(NoteEntryType.event));
+      expect(entry.event, isNotNull);
+      expect(entry.event!.title, equals('去药店'));
+    });
+
+    test('解析 今天拉屎了 - 识别为健康记录', () {
+      final entry = EntryParser.parse('今天拉屎了');
+
+      expect(entry.type, equals(NoteEntryType.health));
+      expect(entry.memoText, equals('拉屎了'));
+    });
+
+    test('解析 宝宝今天打了疫苗 - 识别为健康记录', () {
+      final entry = EntryParser.parse('宝宝今天打了疫苗');
+
+      expect(entry.type, equals(NoteEntryType.health));
+      expect(entry.memoText, equals('宝宝打了疫苗'));
+    });
+  });
+
   group('EntryParser - 多行解析测试', () {
     test('解析多行文本 - 包含花费、事项、备忘', () {
       const text = '''买菜 35.5

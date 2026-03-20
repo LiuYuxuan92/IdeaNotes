@@ -207,6 +207,11 @@ void main() {
       );
 
       final db = await DatabaseHelper.instance.database;
+      final legacyEntries =
+          await DatabaseHelper.instance.getNoteEntries('note-vaccine-1');
+      expect(legacyEntries.length, 1);
+      expect(legacyEntries.first['type'], 'health');
+
       final structuredEntries = await db.query(
         'entries',
         where: 'note_id = ?',
@@ -273,6 +278,42 @@ void main() {
       );
       expect(vaccinationEntry['domain'], 'health');
       expect(vaccinationEntry['amount_value'], isNull);
+    });
+
+    test('排便类文本会保留为 health 并写入健康结构化记录', () async {
+      final service = CanvasSaveService(
+        databaseHelper: DatabaseHelper.instance,
+        createId: () => 'note-health-1',
+      );
+
+      await service.save(
+        CanvasSaveInput(
+          existingNote: null,
+          canvasData: Uint8List.fromList([11, 12, 13]),
+          snapshotBytes: null,
+          thumbnailBytes: null,
+          recognizedText: '今天拉屎了',
+          now: DateTime(2026, 3, 20, 11, 0),
+        ),
+      );
+
+      final legacyEntries =
+          await DatabaseHelper.instance.getNoteEntries('note-health-1');
+      expect(legacyEntries.length, 1);
+      expect(legacyEntries.first['type'], 'health');
+
+      final db = await DatabaseHelper.instance.database;
+      final structuredEntries = await db.query(
+        'entries',
+        where: 'note_id = ?',
+        whereArgs: ['note-health-1'],
+      );
+
+      expect(structuredEntries.length, 1);
+      expect(structuredEntries.first['entry_type'], 'health_record');
+      expect(structuredEntries.first['domain'], 'health');
+      expect(structuredEntries.first['category_l1'], '健康');
+      expect(structuredEntries.first['category_l2'], '排便');
     });
 
     test('识别文本为空时会清空旧 entries 且不新增', () async {

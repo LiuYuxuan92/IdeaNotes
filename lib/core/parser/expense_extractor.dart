@@ -1,5 +1,7 @@
 import 'package:decimal/decimal.dart';
 
+import 'entry_text_rules.dart';
+
 class ExpenseExtractor {
   static const List<Map<String, dynamic>> categoryKeywords = [
     {
@@ -63,11 +65,28 @@ class ExpenseExtractor {
       }
     }
 
+    final expenseVerbMatch = RegExp(
+      r'(?:花了?|花费|花销|用了?|消费|支出|付款|付了|买了?|报销)\s*¥?\s*(\d+(?:\.\d+)?)',
+    ).firstMatch(normalized);
+    if (expenseVerbMatch != null) {
+      final raw = expenseVerbMatch.group(1);
+      if (raw == null) return null;
+      try {
+        return Decimal.parse(raw);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    if (!EntryTextRules.hasExpenseContext(normalized)) {
+      return null;
+    }
+
     final plainNumberMatch = RegExp(
-      r'(^|\s)(\d+(?:\.\d+)?)(?=\s|$)',
+      r'(?<![\d/:])(\d+(?:\.\d+)?)(?![\d年月日号点时分])',
     ).firstMatch(normalized);
     if (plainNumberMatch != null) {
-      final raw = plainNumberMatch.group(2);
+      final raw = plainNumberMatch.group(1);
       if (raw == null) return null;
       try {
         return Decimal.parse(raw);

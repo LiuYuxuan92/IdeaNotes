@@ -361,7 +361,7 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
       return const EmptyStateView(
         icon: Icons.event_note_rounded,
         title: '这段时间还没有可回看的事项',
-        description: '把待办、提醒或时间点写进笔记并保存后，这里会按日期整理时间线。',
+        description: '把提醒、安排或时间点写进笔记并保存后，这里会按日期整理时间线。',
       );
     }
 
@@ -398,7 +398,7 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
               const AppSectionHeader(
                 eyebrow: '时间线',
                 title: '按日期回看事项',
-                description: '同一天的事项会自动放到一起，方便你快速复盘。',
+                description: '这里收录被识别为事项的内容，例如未来安排、提醒词和明确时点。',
               ),
               const SizedBox(height: 16),
               ...data.groups.map(
@@ -435,7 +435,7 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
           items: data.typeStats
               .map(
                 (stat) => _MetricItem(
-                  label: _entryTypeLabel(stat.entryType),
+                  label: _healthEntryTypeLabel(stat.entryType),
                   value: '${stat.count} 条',
                   icon: _entryTypeIcon(stat.entryType),
                   accent: _entryTypeAccent(stat.entryType),
@@ -451,7 +451,7 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
               const AppSectionHeader(
                 eyebrow: '记录',
                 title: '按日期回看健康事项',
-                description: '疫苗、用药、就诊和相关事项都会按天归档。',
+                description: '疫苗、用药、就诊、排便和相关健康事项都会按天归档。',
               ),
               const SizedBox(height: 16),
               ...data.groups.map(
@@ -511,6 +511,31 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
     }
   }
 
+  static String _healthEntryTypeLabel(String entryType) {
+    if (entryType == 'task') {
+      return '健康事项';
+    }
+    return _entryTypeLabel(entryType);
+  }
+
+  static String _timelineEntryLabel(EntryRecord entry) {
+    if (entry.entryType == 'task' && entry.domain == 'health') {
+      return '健康事项';
+    }
+    return _entryTypeLabel(entry.entryType);
+  }
+
+  static String? _timelineTimeLabel(EntryRecord entry) {
+    final occurredAt = entry.occurredAt;
+    if (occurredAt == null) {
+      return null;
+    }
+    if (occurredAt.hour == 0 && occurredAt.minute == 0) {
+      return null;
+    }
+    return '${occurredAt.hour.toString().padLeft(2, '0')}:${occurredAt.minute.toString().padLeft(2, '0')}';
+  }
+
   static IconData _entryTypeIcon(String entryType) {
     switch (entryType) {
       case 'expense':
@@ -550,7 +575,7 @@ extension on RecordsHubTab {
       case RecordsHubTab.finance:
         return '支出分类';
       case RecordsHubTab.tasks:
-        return '待办时间线';
+        return '事项时间线';
       case RecordsHubTab.health:
         return '健康记录';
     }
@@ -561,7 +586,7 @@ extension on RecordsHubTab {
       case RecordsHubTab.finance:
         return '支出分类查询';
       case RecordsHubTab.tasks:
-        return '待办时间线查询';
+        return '事项时间线查询';
       case RecordsHubTab.health:
         return '健康记录查询';
     }
@@ -572,9 +597,9 @@ extension on RecordsHubTab {
       case RecordsHubTab.finance:
         return '查近一段时间的花费总额、分类占比和按月回看。';
       case RecordsHubTab.tasks:
-        return '查待办和事项的日期分布，快速回到某一天发生了什么。';
+        return '收录被识别为事项的内容：未来安排、提醒词和明确时点。';
       case RecordsHubTab.health:
-        return '查疫苗、用药、就诊等健康记录，方便按时间复盘。';
+        return '收录健康相关内容：疫苗、用药、就诊、排便等，也包含健康事项。';
     }
   }
 }
@@ -727,7 +752,9 @@ class _TimelineDayCard extends StatelessWidget {
             (entry) => _RecordLine(
               title: entry.title,
               subtitle: [
-                _RecordsHubScreenState._entryTypeLabel(entry.entryType),
+                _RecordsHubScreenState._timelineEntryLabel(entry),
+                if (_RecordsHubScreenState._timelineTimeLabel(entry) != null)
+                  _RecordsHubScreenState._timelineTimeLabel(entry)!,
                 if (entry.categoryL1?.trim().isNotEmpty == true)
                   entry.categoryL1!.trim(),
                 if (entry.status == 'done')

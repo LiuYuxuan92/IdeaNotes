@@ -377,13 +377,15 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
         _entries.where((entry) => entry.type == NoteEntryType.expense).length;
     final eventCount =
         _entries.where((entry) => entry.type == NoteEntryType.event).length;
+    final healthCount =
+        _entries.where((entry) => entry.type == NoteEntryType.health).length;
     final memoCount =
         _entries.where((entry) => entry.type == NoteEntryType.memo).length;
 
     final bullets = _entries.isEmpty
         ? const [
             '当前页已保留手写原稿与 OCR 文本',
-            '识别更完整后，这里会统计本页的花费、事项和备忘',
+            '识别更完整后，这里会统计本页的花费、事项、健康和备忘',
             '这些结构化结果会直接进入后续查询页继续使用',
           ]
         : _entrySummaryBullets();
@@ -397,7 +399,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
             eyebrow: '结构化概览',
             title: _entries.isEmpty ? '这页还没有提取出结构化条目' : '这页已经提取出可复用的信息',
             description: _recognizedText.isEmpty
-                ? '先识别出文本后，系统才能继续拆出花费、事项和备忘。'
+                ? '先识别出文本后，系统才能继续拆出花费、事项、健康和备忘。'
                 : '这里展示的是当前页已经落库的结构化结果，不是占位说明。',
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -434,6 +436,12 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
                 icon: Icons.event_note_rounded,
                 label: '$eventCount 条事项',
                 accent: AppColors.inkBlue,
+              ),
+              _summaryChip(
+                context,
+                icon: Icons.health_and_safety_outlined,
+                label: '$healthCount 条健康',
+                accent: AppColors.success,
               ),
               _summaryChip(
                 context,
@@ -484,7 +492,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
           const AppSectionHeader(
             eyebrow: '解析结果',
             title: '系统已帮你拆出重点信息',
-            description: '系统会先按当前识别文本拆出花费、事项和备忘，方便你核对这一页的重点。',
+            description: '系统会先按当前识别文本拆出花费、事项、健康和备忘，方便你核对这一页的重点。',
           ),
           const SizedBox(height: 16),
           if (_entries.isEmpty)
@@ -505,12 +513,14 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
         _entries.where((entry) => entry.type == NoteEntryType.expense).length;
     final eventCount =
         _entries.where((entry) => entry.type == NoteEntryType.event).length;
+    final healthCount =
+        _entries.where((entry) => entry.type == NoteEntryType.health).length;
     final memoCount =
         _entries.where((entry) => entry.type == NoteEntryType.memo).length;
 
     return [
       '当前共识别出 ${_entries.length} 条结构化线索',
-      '其中包含 $expenseCount 条花费、$eventCount 条事项、$memoCount 条备忘',
+      '其中包含 $expenseCount 条花费、$eventCount 条事项、$healthCount 条健康、$memoCount 条备忘',
       '这些结果会和 OCR 文本一起保存，后面在查询页里可直接按分类或时间线继续看',
     ];
   }

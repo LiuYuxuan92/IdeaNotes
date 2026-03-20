@@ -4,6 +4,7 @@ import 'package:equatable/equatable.dart';
 enum NoteEntryType {
   expense,
   event,
+  health,
   memo,
 }
 
@@ -56,7 +57,7 @@ class NoteEntry extends Equatable {
               isCompleted: isCompleted,
             )
           : null,
-      memoText: type == NoteEntryType.memo
+      memoText: (type == NoteEntryType.memo || type == NoteEntryType.health)
           ? (map['memo_text'] as String?) ?? (map['raw_text'] as String?)
           : null,
     );

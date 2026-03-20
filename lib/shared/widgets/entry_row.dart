@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/design_system.dart';
 import '../../core/models/note_entry.dart';
+import '../../core/parser/entry_text_rules.dart';
 
 class EntryRow extends StatelessWidget {
   final NoteEntry entry;
@@ -91,6 +92,10 @@ class EntryRow extends StatelessWidget {
         return entry.event?.title.isNotEmpty == true
             ? entry.event!.title
             : '待办事项';
+      case NoteEntryType.health:
+        return entry.memoText?.trim().isNotEmpty == true
+            ? entry.memoText!.trim()
+            : '健康记录';
       case NoteEntryType.memo:
         return entry.memoText?.trim().isNotEmpty == true
             ? entry.memoText!.trim()
@@ -108,9 +113,25 @@ class EntryRow extends StatelessWidget {
         final event = entry.event;
         if (event == null) return null;
         if (event.date != null) {
-          return '${event.isCompleted ? '已完成' : '待处理'} · ${event.date!.month}月${event.date!.day}日';
+          final hasClockTime =
+              event.date!.hour != 0 || event.date!.minute != 0;
+          final dateLabel = hasClockTime
+              ? '${event.date!.month}月${event.date!.day}日 ${event.date!.hour.toString().padLeft(2, '0')}:${event.date!.minute.toString().padLeft(2, '0')}'
+              : '${event.date!.month}月${event.date!.day}日';
+          return '${event.isCompleted ? '已完成' : '待处理'} · $dateLabel';
         }
         return event.isCompleted ? '已完成' : '待处理';
+      case NoteEntryType.health:
+        if (EntryTextRules.hasVaccinationKeyword(entry.rawText)) {
+          return '健康记录 · 疫苗';
+        }
+        if (EntryTextRules.hasMedicationKeyword(entry.rawText)) {
+          return '健康记录 · 用药';
+        }
+        if (EntryTextRules.hasDigestiveKeyword(entry.rawText)) {
+          return '健康记录 · 排便';
+        }
+        return '健康记录';
       case NoteEntryType.memo:
         return '备忘';
     }
@@ -143,6 +164,14 @@ class EntryRow extends StatelessWidget {
           icon: entry.event?.isCompleted == true
               ? Icons.task_alt_rounded
               : Icons.event_note_rounded,
+        );
+      case NoteEntryType.health:
+        return const _EntryPalette(
+          background: Color(0xFFF1F7F3),
+          border: Color(0xFFD6E8DD),
+          pill: Color(0xFFDCEFE4),
+          accent: AppColors.success,
+          icon: Icons.health_and_safety_outlined,
         );
       case NoteEntryType.memo:
         return const _EntryPalette(

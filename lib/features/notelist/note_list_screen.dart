@@ -213,7 +213,7 @@ class _NoteListScreenState extends State<NoteListScreen> {
     if (state.notes.isEmpty) {
       return '先写一页，再识别，再把花费、事项和健康记录沉淀成可查询的数据。';
     }
-    return '上面是操作入口，下面是最近笔记。支出分类、待办时间线、健康记录都可以直接点进去看。';
+    return '上面是操作入口，下面是最近笔记。支出分类、事项时间线、健康记录都可以直接点进去看。';
   }
 
   Widget _buildPrimaryActions(BuildContext context) {
@@ -227,7 +227,7 @@ class _NoteListScreenState extends State<NoteListScreen> {
       _ActionPanelSpec(
         icon: Icons.search_rounded,
         title: '搜全部内容',
-        description: '搜索 OCR 文本、事项、金额和关键词。',
+        description: '全文搜索 OCR 原文、金额、日期词和关键词。',
         onTap: _openSearchCenter,
       ),
     ];
@@ -272,15 +272,15 @@ class _NoteListScreenState extends State<NoteListScreen> {
         onTap: () => _openRecordsHub(RecordsHubTab.finance),
       ),
       _RecordsShortcutSpec(
-        title: '待办时间线',
-        description: '按日期回看待办、提醒和当天发生的事项。',
+        title: '事项时间线',
+        description: '按日期回看被识别为事项的内容，例如提醒、安排和明确时点。',
         icon: Icons.event_note_rounded,
         accent: AppColors.inkBlue,
         onTap: () => _openRecordsHub(RecordsHubTab.tasks),
       ),
       _RecordsShortcutSpec(
         title: '健康记录',
-        description: '查疫苗、用药、就诊和相关事项的时间线。',
+        description: '查疫苗、用药、就诊、排便和相关健康事项的时间线。',
         icon: Icons.vaccines_rounded,
         accent: AppColors.success,
         onTap: () => _openRecordsHub(RecordsHubTab.health),
@@ -295,8 +295,8 @@ class _NoteListScreenState extends State<NoteListScreen> {
         children: [
           const AppSectionHeader(
             eyebrow: '结构化记录',
-            title: '不是占位入口，点进去就能查',
-            description: '如果这页已经识别并保存过，下面这些入口会直接查询现有结构化数据。',
+          title: '不是占位入口，点进去就能查',
+            description: '如果这页已经识别并保存过，下面这些入口会直接查询现有结构化数据，不和全文搜索混用。',
           ),
           const SizedBox(height: 16),
           if (context.isCompact)
@@ -340,7 +340,7 @@ class _NoteListScreenState extends State<NoteListScreen> {
         autofocus: true,
         textInputAction: TextInputAction.search,
         decoration: InputDecoration(
-          hintText: '搜标题关键词、识别文本或待办内容',
+          hintText: '搜原文关键词、金额或日期词',
           prefixIcon: const Icon(Icons.search_rounded),
           suffixIcon: _searchController.text.isEmpty
               ? null

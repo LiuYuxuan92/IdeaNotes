@@ -48,5 +48,17 @@ void main() {
       expect(entry.type, NoteEntryType.memo);
       expect(entry.memoText, '记一下灵感');
     });
+
+    test('能正确还原 health entry', () {
+      final entry = NoteEntry.fromMap(const {
+        'id': 'entry-health',
+        'type': 'health',
+        'raw_text': '今天拉屎了',
+        'memo_text': '拉屎了',
+      });
+
+      expect(entry.type, NoteEntryType.health);
+      expect(entry.memoText, '拉屎了');
+    });
   });
 }

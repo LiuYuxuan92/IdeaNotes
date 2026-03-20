@@ -40,8 +40,14 @@ void main() {
       await tester.pumpWidget(_wrapWithBloc(bloc));
       await tester.pump();
 
-      expect(find.text('先写下第一条想法吧'), findsOneWidget);
-      expect(find.text('新建第一条笔记'), findsOneWidget);
+      expect(
+        find.text('先写下第一条想法吧', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('新建第一条笔记', skipOffstage: false),
+        findsOneWidget,
+      );
 
       bloc.close();
     });
@@ -57,8 +63,14 @@ void main() {
       await tester.pumpWidget(_wrapWithBloc(bloc));
       await tester.pump();
 
-      expect(find.text('没有找到相关笔记'), findsOneWidget);
-      expect(find.text('清空搜索词'), findsOneWidget);
+      expect(
+        find.text('没有找到相关笔记', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('清空搜索词', skipOffstage: false),
+        findsOneWidget,
+      );
 
       bloc.close();
     });
@@ -72,9 +84,18 @@ void main() {
       await tester.pumpWidget(_wrapWithBloc(bloc));
       await tester.pump();
 
-      expect(find.text('笔记列表暂时打不开'), findsOneWidget);
-      expect(find.textContaining('db failed'), findsOneWidget);
-      expect(find.text('重新加载'), findsOneWidget);
+      expect(
+        find.text('笔记列表暂时打不开', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('db failed', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('重新加载', skipOffstage: false),
+        findsOneWidget,
+      );
 
       bloc.close();
     });
