@@ -31,8 +31,8 @@ class OcrResultBanner extends StatelessWidget {
     final hasResult = result.trim().isNotEmpty;
 
     return AppSurface(
-      margin: const EdgeInsets.all(0),
       padding: const EdgeInsets.all(18),
+      radius: 30,
       backgroundColor: palette.background,
       border: BorderSide(color: palette.border),
       child: Column(
@@ -42,11 +42,11 @@ class OcrResultBanner extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: palette.pill,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(_icon, color: palette.accent, size: 20),
               ),
@@ -64,38 +64,62 @@ class OcrResultBanner extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    if ((helperText ?? _defaultHelper).isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        helperText ?? _defaultHelper,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
+                    const SizedBox(height: 6),
+                    Text(
+                      helperText ?? _defaultHelper,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSecondary,
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),
-              Wrap(
-                spacing: 4,
-                children: [
-                  IconButton(
-                    onPressed: hasResult ? onCopy : null,
-                    tooltip: '复制识别文本',
-                    icon: const Icon(Icons.copy_all_rounded, size: 18),
-                  ),
-                  IconButton(
-                    onPressed: hasResult ? onEdit : null,
-                    tooltip: '编辑识别文本',
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                  ),
-                  if (showSaveButton)
-                    IconButton(
-                      onPressed: hasResult ? onSave : null,
-                      tooltip: '保存识别文本',
-                      icon: const Icon(Icons.save_outlined, size: 18),
-                    ),
-                ],
+              _StateChip(label: _statusLabel, accent: palette.accent),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _ActionChip(
+                icon: Icons.copy_all_rounded,
+                label: '复制',
+                enabled: hasResult,
+                onTap: hasResult ? onCopy : null,
+              ),
+              _ActionChip(
+                icon: Icons.edit_outlined,
+                label: '编辑',
+                enabled: hasResult,
+                onTap: hasResult ? onEdit : null,
+              ),
+              if (showSaveButton)
+                _ActionChip(
+                  icon: Icons.save_outlined,
+                  label: '保存',
+                  enabled: hasResult,
+                  onTap: hasResult ? onSave : null,
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _TagChip(
+                icon: Icons.notes_rounded,
+                label: hasResult ? 'OCR 文本' : '等待识别',
+              ),
+              _TagChip(
+                icon: Icons.rule_rounded,
+                label: hasResult ? '建议人工校对' : '可先保存手写内容',
+              ),
+              const _TagChip(
+                icon: Icons.auto_awesome_rounded,
+                label: 'AI 解析预留',
+                accent: AppColors.aiAccent,
               ),
             ],
           ),
@@ -105,49 +129,30 @@ class OcrResultBanner extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.78),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: palette.border.withOpacity(0.9)),
+                color: Colors.white.withValues(alpha: 0.82),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: palette.border.withValues(alpha: 0.9),
+                ),
               ),
               child: hasResult
-                  ? SingleChildScrollView(
-                      child: SelectableText(
-                        result,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textPrimary,
-                          height: 1.65,
+                  ? Scrollbar(
+                      child: SingleChildScrollView(
+                        child: SelectableText(
+                          result,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: AppColors.textPrimary,
+                            height: 1.7,
+                          ),
                         ),
                       ),
                     )
-                  : Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (state == OcrBannerState.processing)
-                            const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2.2),
-                            )
-                          else
-                            Icon(_icon, size: 28, color: palette.accent),
-                          const SizedBox(height: 12),
-                          Text(
-                            _emptyTitle,
-                            style: theme.textTheme.titleSmall
-                                ?.copyWith(color: AppColors.textPrimary),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            helperText ?? _defaultHelper,
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: AppColors.textSecondary),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
+                  : _EmptyPanel(
+                      icon: _icon,
+                      accent: palette.accent,
+                      title: _emptyTitle,
+                      description: helperText ?? _defaultHelper,
+                      state: state,
                     ),
             ),
           ),
@@ -167,7 +172,7 @@ class OcrResultBanner extends StatelessWidget {
       case OcrBannerState.error:
         return Icons.error_outline_rounded;
       case OcrBannerState.idle:
-        return Icons.text_snippet_outlined;
+        return Icons.notes_rounded;
     }
   }
 
@@ -183,6 +188,21 @@ class OcrResultBanner extends StatelessWidget {
         return '识别失败';
       case OcrBannerState.idle:
         return '等待识别';
+    }
+  }
+
+  String get _statusLabel {
+    switch (state) {
+      case OcrBannerState.processing:
+        return '进行中';
+      case OcrBannerState.success:
+        return '已完成';
+      case OcrBannerState.warning:
+        return '需处理';
+      case OcrBannerState.error:
+        return '异常';
+      case OcrBannerState.idle:
+        return '待开始';
     }
   }
 
@@ -254,6 +274,178 @@ class OcrResultBanner extends StatelessWidget {
           accent: AppColors.slateBlue,
         );
     }
+  }
+}
+
+class _ActionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  const _ActionChip({
+    required this.icon,
+    required this.label,
+    required this.enabled,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = enabled ? AppColors.textPrimary : AppColors.disabled;
+    final background = enabled ? Colors.white : const Color(0xFFF1F3F4);
+
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: foreground),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: foreground,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TagChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color accent;
+
+  const _TagChip({
+    required this.icon,
+    required this.label,
+    this.accent = AppColors.textSecondary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final background = accent == AppColors.aiAccent
+        ? AppColors.aiAccentSoft
+        : const Color(0xFFF2F5F6);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: accent),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: accent,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StateChip extends StatelessWidget {
+  final String label;
+  final Color accent;
+
+  const _StateChip({
+    required this.label,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: accent,
+              fontWeight: FontWeight.w700,
+            ),
+      ),
+    );
+  }
+}
+
+class _EmptyPanel extends StatelessWidget {
+  final IconData icon;
+  final Color accent;
+  final String title;
+  final String description;
+  final OcrBannerState state;
+
+  const _EmptyPanel({
+    required this.icon,
+    required this.accent,
+    required this.title,
+    required this.description,
+    required this.state,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (state == OcrBannerState.processing)
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.2,
+                color: accent,
+              ),
+            )
+          else
+            Icon(icon, size: 28, color: accent),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: AppColors.textPrimary,
+                ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            description,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
   }
 }
 

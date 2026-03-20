@@ -111,7 +111,7 @@ class DrawingStroke extends Equatable {
 
   Map<String, dynamic> toJson() => {
         'points': points.map((p) => {'x': p.dx, 'y': p.dy}).toList(),
-        'color': color.value,
+        'color': color.toARGB32(),
         'strokeWidth': strokeWidth,
         'isEraser': isEraser,
       };
