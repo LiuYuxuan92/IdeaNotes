@@ -7,9 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart';
 import 'package:idea_notes/core/models/note.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
+import 'package:idea_notes/core/storage/database_migrations.dart';
 import 'package:idea_notes/features/canvas/services/canvas_save_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-
 
 DynamicLibrary _openSqlite() {
   const candidates = [
@@ -51,54 +51,8 @@ Future<void> _setUpInMemoryDatabase() async {
   final db = await _testDatabaseFactory.openDatabase(
     inMemoryDatabasePath,
     options: OpenDatabaseOptions(
-      version: 3,
-      onCreate: (db, version) async {
-        await db.execute('PRAGMA foreign_keys = ON');
-        await db.execute('''
-          CREATE TABLE notebooks (
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE notes (
-            id TEXT PRIMARY KEY,
-            notebook_id TEXT,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            canvas_data BLOB,
-            snapshot_image_path TEXT,
-            thumbnail_image_path TEXT,
-            recognized_text TEXT,
-            FOREIGN KEY (notebook_id) REFERENCES notebooks (id) ON DELETE CASCADE
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE note_entries (
-            id TEXT PRIMARY KEY,
-            note_id TEXT NOT NULL,
-            type TEXT NOT NULL,
-            raw_text TEXT NOT NULL,
-            amount TEXT,
-            category TEXT,
-            event_title TEXT,
-            event_date INTEGER,
-            is_completed INTEGER DEFAULT 0,
-            memo_text TEXT,
-            created_at INTEGER NOT NULL,
-            FOREIGN KEY (note_id) REFERENCES notes (id) ON DELETE CASCADE
-          )
-        ''');
-        final now = DateTime.now().millisecondsSinceEpoch;
-        await db.insert('notebooks', {
-          'id': 'default-notebook',
-          'title': '我的笔记',
-          'created_at': now,
-          'updated_at': now,
-        });
-      },
+      version: kDatabaseVersion,
+      onCreate: createDatabaseSchema,
     ),
   );
 
@@ -143,9 +97,20 @@ void main() {
       expect(noteMap, isNotNull);
       expect(noteMap!['thumbnail_image_path'], '/tmp/note-new-1-thumb.png');
 
-      final entries = await DatabaseHelper.instance.getNoteEntries('note-new-1');
+      final entries =
+          await DatabaseHelper.instance.getNoteEntries('note-new-1');
       expect(entries, isNotEmpty);
       expect(entries.first['type'], 'event');
+
+      final db = await DatabaseHelper.instance.database;
+      final structuredEntries = await db.query(
+        'entries',
+        where: 'note_id = ?',
+        whereArgs: ['note-new-1'],
+      );
+      expect(structuredEntries, isNotEmpty);
+      expect(structuredEntries.first['entry_type'], 'task');
+      expect(structuredEntries.first['source_engine'], 'rule-parser');
     });
 
     test('更新已有 note 时会替换旧 entries 并保留旧图路径回退', () async {
@@ -205,10 +170,109 @@ void main() {
       expect(saved.snapshotImagePath, '/tmp/note-existing-new-snapshot.png');
       expect(saved.thumbnailImagePath, '/tmp/old-thumb.png');
 
-      final entries = await DatabaseHelper.instance.getNoteEntries('note-existing');
+      final entries =
+          await DatabaseHelper.instance.getNoteEntries('note-existing');
       expect(entries.length, 1);
       expect(entries.first['raw_text'], '买菜 35.5');
       expect(entries.first['type'], 'expense');
+
+      final db = await DatabaseHelper.instance.database;
+      final structuredEntries = await db.query(
+        'entries',
+        where: 'note_id = ?',
+        whereArgs: ['note-existing'],
+        orderBy: 'created_at ASC',
+      );
+      expect(structuredEntries.length, 1);
+      expect(structuredEntries.first['entry_type'], 'expense');
+      expect(structuredEntries.first['domain'], 'finance');
+      expect(structuredEntries.first['amount_value'], '35.5');
+    });
+
+    test('健康类 memo 会写成可查询的结构化疫苗记录', () async {
+      final service = CanvasSaveService(
+        databaseHelper: DatabaseHelper.instance,
+        createId: () => 'note-vaccine-1',
+      );
+
+      await service.save(
+        CanvasSaveInput(
+          existingNote: null,
+          canvasData: Uint8List.fromList([5, 6, 7]),
+          snapshotBytes: null,
+          thumbnailBytes: null,
+          recognizedText: '宝宝今天打了疫苗',
+          now: DateTime(2026, 3, 20, 9, 30),
+        ),
+      );
+
+      final db = await DatabaseHelper.instance.database;
+      final structuredEntries = await db.query(
+        'entries',
+        where: 'note_id = ?',
+        whereArgs: ['note-vaccine-1'],
+      );
+      expect(structuredEntries.length, 1);
+      expect(structuredEntries.first['entry_type'], 'vaccination');
+      expect(structuredEntries.first['domain'], 'health');
+      expect(structuredEntries.first['category_l1'], '医疗');
+      expect(structuredEntries.first['category_l2'], '疫苗');
+
+      final entryId = structuredEntries.first['id'] as String;
+      final subjects = await db.query(
+        'entry_subjects',
+        where: 'entry_id = ?',
+        whereArgs: [entryId],
+      );
+      final tags = await db.query(
+        'entry_tags',
+        where: 'entry_id = ?',
+        whereArgs: [entryId],
+      );
+
+      expect(subjects.length, 1);
+      expect(subjects.first['subject_name'], '宝宝');
+      expect(
+        tags.map((row) => row['tag']).toSet(),
+        {'健康', '宝宝', '疫苗'},
+      );
+    });
+
+    test('健康花费会同时保留 expense 与派生的健康记录', () async {
+      final service = CanvasSaveService(
+        databaseHelper: DatabaseHelper.instance,
+        createId: () => 'note-vaccine-expense-1',
+      );
+
+      await service.save(
+        CanvasSaveInput(
+          existingNote: null,
+          canvasData: Uint8List.fromList([8, 9, 10]),
+          snapshotBytes: null,
+          thumbnailBytes: null,
+          recognizedText: '宝宝打疫苗 128元',
+          now: DateTime(2026, 3, 20, 10, 0),
+        ),
+      );
+
+      final db = await DatabaseHelper.instance.database;
+      final structuredEntries = await db.query(
+        'entries',
+        where: 'note_id = ?',
+        whereArgs: ['note-vaccine-expense-1'],
+      );
+
+      expect(structuredEntries.length, 2);
+      expect(
+        structuredEntries.map((row) => row['entry_type']).toSet(),
+        {'expense', 'vaccination'},
+      );
+
+      final vaccinationEntry = structuredEntries.singleWhere(
+        (row) => row['entry_type'] == 'vaccination',
+      );
+      expect(vaccinationEntry['domain'], 'health');
+      expect(vaccinationEntry['amount_value'], isNull);
     });
 
     test('识别文本为空时会清空旧 entries 且不新增', () async {
@@ -237,7 +301,8 @@ void main() {
         'created_at': now.millisecondsSinceEpoch,
       });
 
-      final service = CanvasSaveService(databaseHelper: DatabaseHelper.instance);
+      final service =
+          CanvasSaveService(databaseHelper: DatabaseHelper.instance);
       final existing = Note(
         id: 'note-empty-text',
         notebookId: 'default-notebook',
@@ -257,8 +322,17 @@ void main() {
         ),
       );
 
-      final entries = await DatabaseHelper.instance.getNoteEntries('note-empty-text');
+      final entries =
+          await DatabaseHelper.instance.getNoteEntries('note-empty-text');
       expect(entries, isEmpty);
+
+      final db = await DatabaseHelper.instance.database;
+      final structuredEntries = await db.query(
+        'entries',
+        where: 'note_id = ?',
+        whereArgs: ['note-empty-text'],
+      );
+      expect(structuredEntries, isEmpty);
     });
   });
 }

@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
+import 'database_migrations.dart';
+
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
@@ -25,101 +27,13 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 3,
-      onCreate: _createDB,
-      onUpgrade: _upgradeDB,
+      version: kDatabaseVersion,
+      onCreate: createDatabaseSchema,
+      onUpgrade: migrateDatabaseSchema,
       onOpen: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
     );
-  }
-
-  Future<void> _createDB(Database db, int version) async {
-    // Notebooks table
-    await db.execute('''
-      CREATE TABLE notebooks (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      )
-    ''');
-
-    // Notes table
-    await db.execute('''
-      CREATE TABLE notes (
-        id TEXT PRIMARY KEY,
-        notebook_id TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        canvas_data BLOB,
-        snapshot_image_path TEXT,
-        thumbnail_image_path TEXT,
-        recognized_text TEXT,
-        FOREIGN KEY (notebook_id) REFERENCES notebooks (id) ON DELETE CASCADE
-      )
-    ''');
-
-    // Note entries table (for parsed OCR results)
-    await db.execute('''
-      CREATE TABLE note_entries (
-        id TEXT PRIMARY KEY,
-        note_id TEXT NOT NULL,
-        type TEXT NOT NULL,
-        raw_text TEXT NOT NULL,
-        amount TEXT,
-        category TEXT,
-        event_title TEXT,
-        event_date INTEGER,
-        is_completed INTEGER DEFAULT 0,
-        memo_text TEXT,
-        created_at INTEGER NOT NULL,
-        FOREIGN KEY (note_id) REFERENCES notes (id) ON DELETE CASCADE
-      )
-    ''');
-
-    // Create default notebook
-    final now = DateTime.now().millisecondsSinceEpoch;
-    await db.insert('notebooks', {
-      'id': 'default-notebook',
-      'title': '我的笔记',
-      'created_at': now,
-      'updated_at': now,
-    });
-  }
-
-  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      // Migrate amount column from REAL to TEXT in note_entries
-      await db.execute('''
-        CREATE TABLE note_entries_new (
-          id TEXT PRIMARY KEY,
-          note_id TEXT NOT NULL,
-          type TEXT NOT NULL,
-          raw_text TEXT NOT NULL,
-          amount TEXT,
-          category TEXT,
-          event_title TEXT,
-          event_date INTEGER,
-          is_completed INTEGER DEFAULT 0,
-          memo_text TEXT,
-          created_at INTEGER NOT NULL,
-          FOREIGN KEY (note_id) REFERENCES notes (id) ON DELETE CASCADE
-        )
-      ''');
-      await db.execute('''
-        INSERT INTO note_entries_new
-          SELECT id, note_id, type, raw_text, CAST(amount AS TEXT),
-                 category, event_title, event_date, is_completed, memo_text, created_at
-          FROM note_entries
-      ''');
-      await db.execute('DROP TABLE note_entries');
-      await db.execute('ALTER TABLE note_entries_new RENAME TO note_entries');
-    }
-
-    if (oldVersion < 3) {
-      await db.execute('ALTER TABLE notes ADD COLUMN thumbnail_image_path TEXT');
-    }
   }
 
   // Notebook operations

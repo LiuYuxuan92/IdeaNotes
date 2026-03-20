@@ -9,7 +9,6 @@ import 'package:idea_notes/core/models/note.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
 import 'package:idea_notes/features/notedetail/note_detail_screen.dart';
 
-
 DynamicLibrary _openSqlite() {
   const candidates = [
     '/usr/lib64/libsqlite3.so.0',
@@ -90,6 +89,13 @@ Future<void> _setUpInMemoryDatabase() async {
             FOREIGN KEY (note_id) REFERENCES notes (id) ON DELETE CASCADE
           )
         ''');
+        final now = DateTime.now().millisecondsSinceEpoch;
+        await db.insert('notebooks', {
+          'id': 'default-notebook',
+          'title': '我的笔记',
+          'created_at': now,
+          'updated_at': now,
+        });
       },
     ),
   );

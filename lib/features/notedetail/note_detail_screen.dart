@@ -7,6 +7,7 @@ import '../../app/design_system.dart';
 import '../../core/models/note.dart';
 import '../../core/models/note_entry.dart';
 import '../../core/parser/entry_parser.dart';
+import '../../core/storage/database_helper.dart';
 import '../../core/storage/image_storage.dart';
 import '../../shared/widgets/entry_row.dart';
 
@@ -38,8 +39,19 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
       _snapshotBytes =
           await ImageStorage.loadSnapshot(widget.note.snapshotImagePath!);
     }
+
     if (_recognizedText.isNotEmpty) {
-      _entries = EntryParser.parseMultiLine(_recognizedText);
+      try {
+        final entryMaps =
+            await DatabaseHelper.instance.getNoteEntries(widget.note.id);
+        if (entryMaps.isNotEmpty) {
+          _entries = entryMaps.map(NoteEntry.fromMap).toList();
+        } else {
+          _entries = EntryParser.parseMultiLine(_recognizedText);
+        }
+      } catch (_) {
+        _entries = EntryParser.parseMultiLine(_recognizedText);
+      }
     }
     if (mounted) {
       setState(() => _isLoading = false);

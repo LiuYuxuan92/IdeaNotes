@@ -5,11 +5,11 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/open.dart' as sqlite3_open;
+import 'package:idea_notes/core/storage/database_migrations.dart';
 import 'package:idea_notes/features/canvas/canvas_screen.dart';
 import 'package:idea_notes/features/canvas/services/canvas_save_service.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-
 
 DynamicLibrary _openSqlite() {
   const candidates = [
@@ -51,54 +51,8 @@ Future<void> _setUpInMemoryDatabase() async {
   final db = await _testDatabaseFactory.openDatabase(
     inMemoryDatabasePath,
     options: OpenDatabaseOptions(
-      version: 3,
-      onCreate: (db, version) async {
-        await db.execute('PRAGMA foreign_keys = ON');
-        await db.execute('''
-          CREATE TABLE notebooks (
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE notes (
-            id TEXT PRIMARY KEY,
-            notebook_id TEXT,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            canvas_data BLOB,
-            snapshot_image_path TEXT,
-            thumbnail_image_path TEXT,
-            recognized_text TEXT,
-            FOREIGN KEY (notebook_id) REFERENCES notebooks (id) ON DELETE CASCADE
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE note_entries (
-            id TEXT PRIMARY KEY,
-            note_id TEXT NOT NULL,
-            type TEXT NOT NULL,
-            raw_text TEXT NOT NULL,
-            amount TEXT,
-            category TEXT,
-            event_title TEXT,
-            event_date INTEGER,
-            is_completed INTEGER DEFAULT 0,
-            memo_text TEXT,
-            created_at INTEGER NOT NULL,
-            FOREIGN KEY (note_id) REFERENCES notes (id) ON DELETE CASCADE
-          )
-        ''');
-        final now = DateTime.now().millisecondsSinceEpoch;
-        await db.insert('notebooks', {
-          'id': 'default-notebook',
-          'title': '我的笔记',
-          'created_at': now,
-          'updated_at': now,
-        });
-      },
+      version: kDatabaseVersion,
+      onCreate: createDatabaseSchema,
     ),
   );
 
@@ -278,7 +232,8 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
 
       final note = await DatabaseHelper.instance.getNote('note-save-db');
-      final entries = await DatabaseHelper.instance.getNoteEntries('note-save-db');
+      final entries =
+          await DatabaseHelper.instance.getNoteEntries('note-save-db');
 
       expect(note, isNotNull);
       expect(note!['recognized_text'], '记得买牛奶');
@@ -286,6 +241,5 @@ void main() {
       expect(entries.first['raw_text'], '记得买牛奶');
       expect(entries.first['type'], 'event');
     });
-
   });
 }
