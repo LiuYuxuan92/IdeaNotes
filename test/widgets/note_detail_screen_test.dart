@@ -160,7 +160,7 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.text('解析结果'), findsOneWidget);
+      expect(find.text('解析结果'), findsWidgets);
       expect(find.text('记得买牛奶'), findsWidgets);
       expect(find.text('识别文本'), findsOneWidget);
     });

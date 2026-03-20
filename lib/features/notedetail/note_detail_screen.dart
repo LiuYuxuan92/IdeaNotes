@@ -21,6 +21,11 @@ class NoteDetailScreen extends StatefulWidget {
 }
 
 class _NoteDetailScreenState extends State<NoteDetailScreen> {
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _canvasSectionKey = GlobalKey();
+  final GlobalKey _recognizedSectionKey = GlobalKey();
+  final GlobalKey _summarySectionKey = GlobalKey();
+  final GlobalKey _entriesSectionKey = GlobalKey();
   Uint8List? _snapshotBytes;
   late String _recognizedText;
   List<NoteEntry> _entries = const [];
@@ -31,6 +36,12 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     super.initState();
     _recognizedText = widget.note.recognizedText?.trim() ?? '';
     _loadNoteDetail();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadNoteDetail() async {
@@ -60,7 +71,8 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final horizontal = context.isLarge ? 28.0 : 20.0;
+    final horizontal =
+        context.isLarge ? 28.0 : (context.isCompact ? 16.0 : 20.0);
 
     return Scaffold(
       appBar: AppBar(
@@ -123,7 +135,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
                     children: [
                       _buildRecognizedCard(context),
                       const SizedBox(height: 18),
-                      _buildAiPlaceholder(context),
+                      _buildStructuredSummaryCard(context),
                       const SizedBox(height: 18),
                       _buildEntriesCard(context),
                     ],
@@ -139,6 +151,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
 
   Widget _buildCompactLayout(BuildContext context) {
     return SingleChildScrollView(
+      controller: _scrollController,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -146,13 +159,25 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
           const SizedBox(height: 18),
           _buildSectionNavigator(context),
           const SizedBox(height: 18),
-          _buildCanvasCard(context),
+          KeyedSubtree(
+            key: _canvasSectionKey,
+            child: _buildCanvasCard(context),
+          ),
           const SizedBox(height: 18),
-          _buildRecognizedCard(context),
+          KeyedSubtree(
+            key: _recognizedSectionKey,
+            child: _buildRecognizedCard(context),
+          ),
           const SizedBox(height: 18),
-          _buildAiPlaceholder(context),
+          KeyedSubtree(
+            key: _summarySectionKey,
+            child: _buildStructuredSummaryCard(context),
+          ),
           const SizedBox(height: 18),
-          _buildEntriesCard(context),
+          KeyedSubtree(
+            key: _entriesSectionKey,
+            child: _buildEntriesCard(context),
+          ),
         ],
       ),
     );
@@ -214,16 +239,30 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
       isFlat: true,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       backgroundColor: Colors.white.withValues(alpha: 0.78),
-      child: const Wrap(
+      child: Wrap(
         spacing: 8,
         runSpacing: 8,
         children: [
-          _NavChip(icon: Icons.draw_rounded, label: '手写原稿'),
-          _NavChip(icon: Icons.notes_rounded, label: 'OCR 文本'),
-          _NavChip(
-            icon: Icons.auto_awesome_rounded,
-            label: '提取内容',
-            accent: AppColors.aiAccent,
+          _SectionJumpChip(
+            icon: Icons.draw_rounded,
+            label: '手写原稿',
+            onTap: () => _scrollToSection(_canvasSectionKey),
+          ),
+          _SectionJumpChip(
+            icon: Icons.notes_rounded,
+            label: 'OCR 文本',
+            onTap: () => _scrollToSection(_recognizedSectionKey),
+          ),
+          _SectionJumpChip(
+            icon: Icons.insights_outlined,
+            label: '结构化概览',
+            onTap: () => _scrollToSection(_summarySectionKey),
+          ),
+          _SectionJumpChip(
+            icon: Icons.checklist_rounded,
+            label: '解析结果',
+            accent: AppColors.inkBlue,
+            onTap: () => _scrollToSection(_entriesSectionKey),
           ),
         ],
       ),
@@ -333,22 +372,107 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     );
   }
 
-  Widget _buildAiPlaceholder(BuildContext context) {
+  Widget _buildStructuredSummaryCard(BuildContext context) {
+    final expenseCount =
+        _entries.where((entry) => entry.type == NoteEntryType.expense).length;
+    final eventCount =
+        _entries.where((entry) => entry.type == NoteEntryType.event).length;
+    final memoCount =
+        _entries.where((entry) => entry.type == NoteEntryType.memo).length;
+
     final bullets = _entries.isEmpty
         ? const [
-            '当前页会同时保留手写原稿和 OCR 文本',
-            '识别更完整后，这里会出现可复用的结构化条目',
-            '后续接入 AI 时，会直接基于这些已保存的数据继续增强',
+            '当前页已保留手写原稿与 OCR 文本',
+            '识别更完整后，这里会统计本页的花费、事项和备忘',
+            '这些结构化结果会直接进入后续查询页继续使用',
           ]
         : _entrySummaryBullets();
 
-    return AiInsightPlaceholder(
-      title: _entries.isEmpty ? '这页内容正在等待更完整的识别结果' : '这页已经提取出可复用的信息',
-      description: _recognizedText.isEmpty
-          ? '先把关键内容识别出来，这里才会继续展示更准确的结构化结果和后续洞察基础。'
-          : '这里先展示当前页已经识别到的数据概况。后续 AI 只会在此基础上继续做归类、纠错和跨时间分析。',
-      bullets: bullets,
-      statusLabel: _entries.isEmpty ? '等待识别' : '已提取要点',
+    return AppSurface(
+      backgroundColor: const Color(0xFFF8FAFB),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppSectionHeader(
+            eyebrow: '结构化概览',
+            title: _entries.isEmpty ? '这页还没有提取出结构化条目' : '这页已经提取出可复用的信息',
+            description: _recognizedText.isEmpty
+                ? '先识别出文本后，系统才能继续拆出花费、事项和备忘。'
+                : '这里展示的是当前页已经落库的结构化结果，不是占位说明。',
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: _entries.isEmpty
+                    ? const Color(0xFFF3E8D0)
+                    : const Color(0xFFDDEEE6),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                _entries.isEmpty ? '等待识别' : '已提取',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: _entries.isEmpty
+                          ? AppColors.warning
+                          : AppColors.success,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _summaryChip(
+                context,
+                icon: Icons.attach_money_rounded,
+                label: '$expenseCount 条花费',
+                accent: AppColors.warning,
+              ),
+              _summaryChip(
+                context,
+                icon: Icons.event_note_rounded,
+                label: '$eventCount 条事项',
+                accent: AppColors.inkBlue,
+              ),
+              _summaryChip(
+                context,
+                icon: Icons.sticky_note_2_outlined,
+                label: '$memoCount 条备忘',
+                accent: AppColors.slateBlue,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...bullets.map(
+            (bullet) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Icon(
+                      Icons.subdirectory_arrow_right_rounded,
+                      size: 16,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      bullet,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -387,7 +511,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     return [
       '当前共识别出 ${_entries.length} 条结构化线索',
       '其中包含 $expenseCount 条花费、$eventCount 条事项、$memoCount 条备忘',
-      '这些结果会和 OCR 文本一起保存，便于后续搜索、复查和继续增强',
+      '这些结果会和 OCR 文本一起保存，后面在查询页里可直接按分类或时间线继续看',
     ];
   }
 
@@ -401,27 +525,17 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     if (_recognizedText.isEmpty) return;
     Share.share(_recognizedText, subject: 'IdeaNotes 笔记');
   }
-}
 
-class _NavChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color accent;
-
-  const _NavChip({
-    required this.icon,
-    required this.label,
-    this.accent = AppColors.textSecondary,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _summaryChip(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Color accent,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: accent == AppColors.aiAccent
-            ? AppColors.aiAccentSoft
-            : const Color(0xFFF2F5F6),
+        color: accent.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -437,6 +551,62 @@ class _NavChip extends StatelessWidget {
                 ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _scrollToSection(GlobalKey key) {
+    final targetContext = key.currentContext;
+    if (targetContext == null) return;
+    Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      alignment: 0.04,
+    );
+  }
+}
+
+class _SectionJumpChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _SectionJumpChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.accent = AppColors.textSecondary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: accent == AppColors.aiAccent
+              ? AppColors.aiAccentSoft
+              : const Color(0xFFF2F5F6),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: accent),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: accent,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -7,6 +7,7 @@ import '../../app/design_system.dart';
 import '../notedetail/note_detail_screen.dart';
 import '../notelist/bloc/note_list_bloc.dart';
 import '../notelist/note_list_item.dart';
+import '../records/records_hub_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -20,13 +21,6 @@ class _SearchScreenState extends State<SearchScreen> {
   Timer? _debounce;
   bool _didSyncInitialQuery = false;
 
-  void _onSearchChanged(String query) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 260), () {
-      context.read<NoteListBloc>().add(SearchNotes(query));
-    });
-  }
-
   @override
   void dispose() {
     _debounce?.cancel();
@@ -34,9 +28,26 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
+  void _onSearchChanged(String query) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 240), () {
+      context.read<NoteListBloc>().add(SearchNotes(query));
+    });
+  }
+
+  void _applySuggestedQuery(String query) {
+    _searchController.value = TextEditingValue(
+      text: query,
+      selection: TextSelection.collapsed(offset: query.length),
+    );
+    context.read<NoteListBloc>().add(SearchNotes(query));
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
-    final horizontal = context.isLarge ? 32.0 : 20.0;
+    final horizontal =
+        context.isLarge ? 32.0 : (context.isCompact ? 16.0 : 20.0);
 
     return Scaffold(
       body: SafeArea(
@@ -49,14 +60,14 @@ class _SearchScreenState extends State<SearchScreen> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 980),
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(horizontal, 18, horizontal, 20),
+                  padding: EdgeInsets.fromLTRB(horizontal, 16, horizontal, 20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildTopBar(context),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 16),
                       _buildSearchHero(context, state),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 16),
                       Expanded(child: _buildBody(context, state)),
                     ],
                   ),
@@ -70,8 +81,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _syncControllerFromState(String query) {
-    if (_didSyncInitialQuery) return;
-    if (query.isEmpty) return;
+    if (_didSyncInitialQuery || query.isEmpty) return;
     _searchController.value = TextEditingValue(
       text: query,
       selection: TextSelection.collapsed(offset: query.length),
@@ -92,12 +102,11 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Search Center',
-                  style: Theme.of(context).textTheme.labelLarge),
+              Text('搜索', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 4),
               Text(
-                '像命令中心一样搜索笔记、OCR 文本与后续结构化内容',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                '搜 OCR 文本、事项、金额关键词，也可以直接跳去结构化记录。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: AppColors.textSecondary,
                     ),
               ),
@@ -113,8 +122,8 @@ class _SearchScreenState extends State<SearchScreen> {
     final hasQuery = query.isNotEmpty;
 
     return AppSurface(
-      padding: const EdgeInsets.all(20),
-      radius: 32,
+      padding: EdgeInsets.all(context.isCompact ? 16 : 20),
+      radius: context.isCompact ? 28 : 32,
       gradient: const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -125,8 +134,8 @@ class _SearchScreenState extends State<SearchScreen> {
         children: [
           const AppSectionHeader(
             eyebrow: '全局搜索',
-            title: '像命令中心一样查找笔记',
-            description: '后续也可以在这里直接询问 AI，例如支出汇总、事项时间线和健康记录。',
+            title: '输入关键词搜索笔记',
+            description: '找一页内容时用关键词；按分类和时间查时，直接走下面的结构化入口。',
           ),
           const SizedBox(height: 16),
           TextField(
@@ -157,30 +166,78 @@ class _SearchScreenState extends State<SearchScreen> {
               _onSearchChanged(value);
             },
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
               _SuggestionChip(
                 icon: Icons.history_rounded,
-                label: hasQuery ? '当前关键词：$query' : '最近搜索',
+                label: hasQuery ? '当前关键词：$query' : '试试常见关键词',
               ),
-              _SuggestionChip(
+              _InteractiveSuggestionChip(
                 icon: Icons.sell_outlined,
-                label:
-                    hasQuery ? '结果 ${state.filteredNotes.length} 条' : '按标签筛选',
+                label: hasQuery ? '结果 ${state.filteredNotes.length} 条' : '花费',
+                onTap: hasQuery ? null : () => _applySuggestedQuery('花费'),
               ),
-              const _SuggestionChip(
-                icon: Icons.auto_awesome_rounded,
-                label: '问问 AI：上周我花了多少钱？',
-                accent: AppColors.aiAccent,
+              _InteractiveSuggestionChip(
+                icon: Icons.vaccines_rounded,
+                label: hasQuery ? '继续换词' : '疫苗',
+                onTap: hasQuery ? null : () => _applySuggestedQuery('疫苗'),
+              ),
+              _InteractiveSuggestionChip(
+                icon: Icons.event_note_rounded,
+                label: hasQuery ? '搜待办' : '待办',
+                onTap: () => _applySuggestedQuery('待办'),
               ),
             ],
           ),
+          const SizedBox(height: 14),
+          _buildQueryJumpRow(context),
         ],
       ),
     );
+  }
+
+  Widget _buildQueryJumpRow(BuildContext context) {
+    final cards = [
+      _JumpCard(
+        icon: Icons.attach_money_rounded,
+        title: '支出分类',
+        subtitle: '按分类看花费',
+        accent: AppColors.warning,
+        onTap: () => _openRecordsHub(RecordsHubTab.finance),
+      ),
+      _JumpCard(
+        icon: Icons.event_note_rounded,
+        title: '待办时间线',
+        subtitle: '按日期回看事项',
+        accent: AppColors.inkBlue,
+        onTap: () => _openRecordsHub(RecordsHubTab.tasks),
+      ),
+      _JumpCard(
+        icon: Icons.vaccines_rounded,
+        title: '健康记录',
+        subtitle: '疫苗和用药时间线',
+        accent: AppColors.success,
+        onTap: () => _openRecordsHub(RecordsHubTab.health),
+      ),
+    ];
+
+    if (context.isCompact) {
+      return Column(
+        children: cards
+            .map(
+              (card) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: SizedBox(width: double.infinity, child: card),
+              ),
+            )
+            .toList(growable: false),
+      );
+    }
+
+    return Wrap(spacing: 10, runSpacing: 10, children: cards);
   }
 
   Widget _buildBody(BuildContext context, NoteListState state) {
@@ -193,25 +250,28 @@ class _SearchScreenState extends State<SearchScreen> {
           child: AppSurface(
             isFlat: true,
             backgroundColor: const Color(0xFFF9FAFB),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.search, size: 56, color: AppColors.textMuted),
-                const SizedBox(height: 14),
-                Text(
-                  '输入关键词搜索笔记',
-                  style: Theme.of(context).textTheme.titleMedium,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '可以搜 OCR 文本、事项、金额关键词，后续也会扩展到 AI 查询入口。',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.search,
+                      size: 56, color: AppColors.textMuted),
+                  const SizedBox(height: 14),
+                  Text(
+                    '输入关键词搜索笔记',
+                    style: Theme.of(context).textTheme.titleMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '可以搜 OCR 文本、事项、金额关键词；如果你想按分类或日期查，直接点上面的结构化入口。',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -225,29 +285,31 @@ class _SearchScreenState extends State<SearchScreen> {
           child: AppSurface(
             isFlat: true,
             backgroundColor: const Color(0xFFF9FAFB),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.search_off,
-                  size: 56,
-                  color: AppColors.textMuted,
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  '未找到相关笔记',
-                  style: Theme.of(context).textTheme.titleMedium,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '试试换一个关键词，或者回到最近的笔记继续补充识别内容。',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.search_off,
+                    size: 56,
+                    color: AppColors.textMuted,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    '未找到相关笔记',
+                    style: Theme.of(context).textTheme.titleMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '试试换一个关键词，或者改走支出分类、待办时间线、健康记录入口继续查。',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -289,17 +351,24 @@ class _SearchScreenState extends State<SearchScreen> {
       ],
     );
   }
+
+  void _openRecordsHub(RecordsHubTab tab) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => RecordsHubScreen(initialTab: tab),
+      ),
+    );
+  }
 }
 
 class _SuggestionChip extends StatelessWidget {
   final IconData icon;
   final String label;
-  final Color accent;
 
   const _SuggestionChip({
     required this.icon,
     required this.label,
-    this.accent = AppColors.textSecondary,
   });
 
   @override
@@ -307,24 +376,125 @@ class _SuggestionChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: accent == AppColors.aiAccent
-            ? AppColors.aiAccentSoft
-            : const Color(0xFFF3F5F6),
+        color: const Color(0xFFF3F5F6),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 15, color: accent),
+          Icon(icon, size: 15, color: AppColors.textSecondary),
           const SizedBox(width: 6),
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: accent,
+                  color: AppColors.textSecondary,
                   fontWeight: FontWeight.w700,
                 ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _InteractiveSuggestionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  const _InteractiveSuggestionChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEAF1F4),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: AppColors.inkBlue),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.inkBlue,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _JumpCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _JumpCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        width: 190,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: accent.withValues(alpha: 0.16)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, size: 18, color: accent),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

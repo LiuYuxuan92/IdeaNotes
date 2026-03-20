@@ -40,7 +40,7 @@ void main() {
       await tester.pumpWidget(_wrapWithBloc(bloc));
       await tester.pump();
 
-      expect(find.text('输入关键词搜索笔记'), findsOneWidget);
+      expect(find.text('输入关键词搜索笔记'), findsWidgets);
       expect(find.byIcon(Icons.search), findsWidgets);
 
       bloc.close();
@@ -57,7 +57,7 @@ void main() {
       await tester.pumpWidget(_wrapWithBloc(bloc));
       await tester.pump();
 
-      expect(find.text('未找到相关笔记'), findsOneWidget);
+      expect(find.text('未找到相关笔记'), findsWidgets);
       expect(find.byIcon(Icons.search_off), findsOneWidget);
 
       bloc.close();

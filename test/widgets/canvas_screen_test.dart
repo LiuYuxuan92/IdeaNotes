@@ -110,7 +110,7 @@ void main() {
 
       expect(find.text('新建手写笔记'), findsOneWidget);
       expect(find.text('识别结果'), findsOneWidget);
-      expect(find.byIcon(Icons.text_snippet_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.text_snippet_outlined), findsWidgets);
       expect(find.byIcon(Icons.save_outlined), findsOneWidget);
     });
 
@@ -122,9 +122,7 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.edit_outlined));
-      await tester.pumpAndSettle();
-
+      expect(find.byIcon(Icons.edit_outlined), findsNothing);
       expect(find.text('编辑识别文本'), findsNothing);
     });
 

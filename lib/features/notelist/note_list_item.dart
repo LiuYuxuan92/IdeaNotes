@@ -111,8 +111,8 @@ class _ListCardBody extends StatelessWidget {
       children: [
         _NoteThumbnail(
           note: note,
-          width: 102,
-          height: 126,
+          width: context.isCompact ? 88 : 102,
+          height: context.isCompact ? 110 : 126,
         ),
         const SizedBox(width: 16),
         Expanded(
@@ -150,10 +150,10 @@ class _ListCardBody extends StatelessWidget {
                                   : '待识别',
                               emphasized: hasText,
                             ),
-                            if (hasText)
+                            if (hasText && !context.isCompact)
                               const _MetaChip(
                                 icon: Icons.auto_awesome_rounded,
-                                label: '结构化已预备',
+                                label: '已可查询',
                                 highlightedColor: AppColors.aiAccent,
                               ),
                           ],

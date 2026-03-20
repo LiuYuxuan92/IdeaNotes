@@ -97,6 +97,9 @@ void main() {
       await tester.pumpWidget(_wrapWithBloc(bloc));
       await tester.pump();
 
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -800));
+      await tester.pumpAndSettle();
+
       expect(find.textContaining('第一行内容'), findsWidgets);
       expect(find.byType(FloatingActionButton), findsOneWidget);
 

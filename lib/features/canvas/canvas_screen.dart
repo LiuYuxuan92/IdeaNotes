@@ -128,6 +128,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompactViewport = MediaQuery.sizeOf(context).width < 720;
+
     return BlocProvider.value(
       value: _canvasBloc,
       child: Scaffold(
@@ -135,12 +137,18 @@ class _CanvasScreenState extends State<CanvasScreen> {
           title: Text(widget.noteId == null ? '新建手写笔记' : '继续编辑笔记'),
           actions: [
             IconButton(
-              onPressed: _toggleResultPanel,
-              tooltip: _isResultPanelExpanded ? '收起识别面板' : '展开识别面板',
+              onPressed: isCompactViewport
+                  ? _showCompactResultSheet
+                  : _toggleResultPanel,
+              tooltip: isCompactViewport
+                  ? '查看识别结果'
+                  : (_isResultPanelExpanded ? '收起识别面板' : '展开识别面板'),
               icon: Icon(
-                context.isLarge
-                    ? Icons.view_sidebar_rounded
-                    : Icons.vertical_align_top_rounded,
+                isCompactViewport
+                    ? Icons.notes_rounded
+                    : context.isLarge
+                        ? Icons.view_sidebar_rounded
+                        : Icons.vertical_align_top_rounded,
               ),
             ),
             IconButton(
@@ -176,6 +184,22 @@ class _CanvasScreenState extends State<CanvasScreen> {
               final isCompact = context.isCompact;
               final horizontal =
                   context.isLarge ? 24.0 : (isCompact ? 12.0 : 16.0);
+
+              if (isCompact) {
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(horizontal, 8, horizontal, 16),
+                  child: Column(
+                    children: [
+                      Expanded(child: _buildCanvasStage(context)),
+                      const SizedBox(height: 12),
+                      _buildCompactResultCard(context),
+                      const SizedBox(height: 12),
+                      const CanvasToolbar(),
+                    ],
+                  ),
+                );
+              }
+
               final largePanelWidth =
                   (constraints.maxWidth * 0.34).clamp(340.0, 420.0).toDouble();
               final phoneDrawerBodyHeight =
@@ -374,6 +398,142 @@ class _CanvasScreenState extends State<CanvasScreen> {
           accent: hasResult ? AppColors.success : AppColors.textSecondary,
         ),
       ],
+    );
+  }
+
+  Widget _buildCompactResultCard(BuildContext context) {
+    final hasResult = _ocrResult.trim().isNotEmpty;
+    final previewText =
+        hasResult ? _previewResultText(_ocrResult) : _ocrHelperText;
+
+    return AppSurface(
+      padding: const EdgeInsets.all(14),
+      radius: 26,
+      backgroundColor: Colors.white.withValues(alpha: 0.96),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('识别结果',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 4),
+                    Text(
+                      _panelTitle,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              _PanelStatusPill(state: _ocrBannerState),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFB),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_ocrBannerState == OcrBannerState.processing) ...[
+                  const LinearProgressIndicator(minHeight: 4),
+                  const SizedBox(height: 12),
+                ],
+                Text(
+                  previewText,
+                  maxLines: hasResult ? 4 : 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: hasResult
+                            ? AppColors.textPrimary
+                            : AppColors.textSecondary,
+                        height: 1.55,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              TextButton.icon(
+                onPressed: _isRecognizing ? null : _runOcr,
+                icon: const Icon(Icons.text_snippet_outlined),
+                label: Text(hasResult ? '重新识别' : '识别当前页'),
+              ),
+              if (hasResult)
+                TextButton.icon(
+                  onPressed: _showCompactResultSheet,
+                  icon: const Icon(Icons.open_in_full_rounded),
+                  label: const Text('查看全文'),
+                ),
+              if (hasResult)
+                TextButton.icon(
+                  onPressed: _editOcrResult,
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('编辑文本'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _previewResultText(String text) {
+    final lines = text
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+    if (lines.isEmpty) {
+      return text.trim();
+    }
+    return lines.take(4).join('\n');
+  }
+
+  Future<void> _showCompactResultSheet() async {
+    if (!mounted) return;
+
+    final media = MediaQuery.of(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: SizedBox(
+            height: media.size.height * 0.74,
+            child: OcrResultBanner(
+              result: _ocrResult,
+              state: _ocrBannerState,
+              helperText: _ocrHelperText,
+              onCopy: _copyOcrResult,
+              onEdit: _editOcrResult,
+            ),
+          ),
+        );
+      },
     );
   }
 

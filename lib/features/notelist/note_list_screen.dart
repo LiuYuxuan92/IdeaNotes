@@ -7,6 +7,7 @@ import '../../app/design_system.dart';
 import '../../core/models/note.dart';
 import '../canvas/canvas_screen.dart';
 import '../notedetail/note_detail_screen.dart';
+import '../records/records_hub_screen.dart';
 import '../search/search_screen.dart';
 import 'bloc/note_list_bloc.dart';
 import 'note_list_item.dart';
@@ -39,13 +40,14 @@ class _NoteListScreenState extends State<NoteListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final horizontal = context.isLarge ? 32.0 : 20.0;
+    final horizontal =
+        context.isLarge ? 32.0 : (context.isCompact ? 16.0 : 20.0);
 
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createNewNote,
         icon: const Icon(Icons.add_rounded),
-        label: const Text('新建笔记'),
+        label: Text(context.isCompact ? '记一页' : '新建笔记'),
         tooltip: '新建笔记',
       ),
       body: SafeArea(
@@ -60,7 +62,7 @@ class _NoteListScreenState extends State<NoteListScreen> {
                 slivers: [
                   SliverPadding(
                     padding:
-                        EdgeInsets.fromLTRB(horizontal, 18, horizontal, 12),
+                        EdgeInsets.fromLTRB(horizontal, 16, horizontal, 12),
                     sliver: SliverToBoxAdapter(
                       child: _buildHeader(context, state),
                     ),
@@ -73,9 +75,18 @@ class _NoteListScreenState extends State<NoteListScreen> {
                         child: _buildSearchBar(context),
                       ),
                     ),
+                  if (state.status == NoteListStatus.loaded &&
+                      state.filteredNotes.isNotEmpty)
+                    SliverPadding(
+                      padding:
+                          EdgeInsets.fromLTRB(horizontal, 2, horizontal, 8),
+                      sliver: const SliverToBoxAdapter(
+                        child: _ListSectionHeader(),
+                      ),
+                    ),
                   SliverPadding(
                     padding:
-                        EdgeInsets.fromLTRB(horizontal, 4, horizontal, 120),
+                        EdgeInsets.fromLTRB(horizontal, 0, horizontal, 120),
                     sliver: _buildBody(context, state),
                   ),
                 ],
@@ -88,74 +99,28 @@ class _NoteListScreenState extends State<NoteListScreen> {
   }
 
   Widget _buildHeader(BuildContext context, NoteListState state) {
-    final theme = Theme.of(context);
-    final count = state.filteredNotes.length;
-    final searchActive = _searchController.text.trim().isNotEmpty;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('IdeaNotes', style: theme.textTheme.labelLarge),
-                  const SizedBox(height: 8),
-                  Text(
-                    '把今天的手写想法，整理成可继续推进的内容',
-                    style: theme.textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    searchActive
-                        ? '已按关键词筛选，共找到 $count 条笔记。'
-                        : count == 0
-                            ? '还没有内容时，可以先写一页，再决定是否识别。'
-                            : '最近更新的内容会优先显示，方便快速回到刚记录的想法。',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              children: [
-                IconButton.filledTonal(
-                  onPressed: _toggleSearch,
-                  tooltip: _isSearchExpanded ? '收起搜索' : '展开搜索',
-                  icon: Icon(
-                    _isSearchExpanded
-                        ? Icons.close_rounded
-                        : Icons.search_rounded,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                IconButton.filledTonal(
-                  onPressed: _openSearchCenter,
-                  tooltip: '打开搜索中心',
-                  icon: const Icon(Icons.travel_explore_rounded),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        _buildOverviewPanel(context, state),
-        const SizedBox(height: 14),
-        _buildFutureQueryRail(context),
+        _buildHero(context, state),
+        const SizedBox(height: 12),
+        _buildPrimaryActions(context),
+        const SizedBox(height: 12),
+        _buildRecordsPanel(context),
       ],
     );
   }
 
-  Widget _buildOverviewPanel(BuildContext context, NoteListState state) {
+  Widget _buildHero(BuildContext context, NoteListState state) {
+    final notesCount = state.notes.length;
+    final visibleCount = state.filteredNotes.length;
+    final recognizedCount = state.notes
+        .where((note) => (note.recognizedText ?? '').trim().isNotEmpty)
+        .length;
+
     return AppSurface(
-      padding: const EdgeInsets.all(18),
-      radius: 30,
+      padding: EdgeInsets.all(context.isCompact ? 16 : 20),
+      radius: context.isCompact ? 28 : 32,
       gradient: const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -164,69 +129,203 @@ class _NoteListScreenState extends State<NoteListScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const AppSectionHeader(
-            eyebrow: '概览',
-            title: '今天的手写记录台',
-            description: '先收集，再识别，再把高价值信息推进到结构化查询。',
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('IdeaNotes',
+                        style: Theme.of(context).textTheme.labelLarge),
+                    const SizedBox(height: 8),
+                    Text(
+                      context.isCompact ? '先记下来，再慢慢查' : '把手写页整理成能继续查询的记录',
+                      style: context.isCompact
+                          ? Theme.of(context).textTheme.titleLarge
+                          : Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      _heroDescription(state),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                children: [
+                  IconButton.filledTonal(
+                    onPressed: _toggleSearch,
+                    tooltip: _isSearchExpanded ? '收起快速筛选' : '展开快速筛选',
+                    icon: Icon(
+                      _isSearchExpanded
+                          ? Icons.close_rounded
+                          : Icons.tune_rounded,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  IconButton.filledTonal(
+                    onPressed: _openSearchCenter,
+                    tooltip: '打开搜索页',
+                    icon: const Icon(Icons.search_rounded),
+                  ),
+                ],
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _OverviewTile(
-                  label: '笔记总数',
-                  value: state.notes.length.toString(),
-                  icon: Icons.library_books_outlined,
-                ),
-                const SizedBox(width: 12),
-                _OverviewTile(
-                  label: '当前可查看',
-                  value: state.filteredNotes.length.toString(),
-                  icon: Icons.visibility_outlined,
-                ),
-                const SizedBox(width: 12),
-                _OverviewTile(
-                  label: '识别状态',
-                  value: _summarizeOcr(state.notes),
-                  icon: Icons.text_snippet_outlined,
-                ),
-                const SizedBox(width: 12),
-                const _FutureOverviewTile(),
-              ],
-            ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _HeroPill(
+                icon: Icons.library_books_outlined,
+                label: '$notesCount 页笔记',
+              ),
+              _HeroPill(
+                icon: Icons.text_snippet_outlined,
+                label: '$recognizedCount 页已识别',
+                accent: recognizedCount > 0
+                    ? AppColors.success
+                    : AppColors.textSecondary,
+              ),
+              _HeroPill(
+                icon: Icons.visibility_outlined,
+                label: state.searchQuery.isEmpty
+                    ? '当前显示 $visibleCount 页'
+                    : '筛到 $visibleCount 页',
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFutureQueryRail(BuildContext context) {
+  String _heroDescription(NoteListState state) {
+    if (state.searchQuery.isNotEmpty) {
+      return '你现在正在按关键词筛选，列表里只保留和搜索词相关的笔记。';
+    }
+    if (state.notes.isEmpty) {
+      return '先写一页，再识别，再把花费、事项和健康记录沉淀成可查询的数据。';
+    }
+    return '上面是操作入口，下面是最近笔记。支出分类、待办时间线、健康记录都可以直接点进去看。';
+  }
+
+  Widget _buildPrimaryActions(BuildContext context) {
+    final cards = [
+      _ActionPanelSpec(
+        icon: Icons.draw_rounded,
+        title: '记一页手写',
+        description: '直接进入画布，先把事情写下来。',
+        onTap: _createNewNote,
+      ),
+      _ActionPanelSpec(
+        icon: Icons.search_rounded,
+        title: '搜全部内容',
+        description: '搜索 OCR 文本、事项、金额和关键词。',
+        onTap: _openSearchCenter,
+      ),
+    ];
+
+    if (context.isCompact) {
+      return Column(
+        children: cards
+            .map(
+              (spec) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _ActionPanelCard(spec: spec),
+              ),
+            )
+            .toList(growable: false),
+      );
+    }
+
+    return Row(
+      children: cards
+          .map(
+            (spec) => Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  right: spec == cards.first ? 6 : 0,
+                  left: spec == cards.last ? 6 : 0,
+                ),
+                child: _ActionPanelCard(spec: spec),
+              ),
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+
+  Widget _buildRecordsPanel(BuildContext context) {
+    final cards = [
+      _RecordsShortcutSpec(
+        title: '支出分类',
+        description: '看近一段时间记过哪些花费，按分类汇总金额。',
+        icon: Icons.attach_money_rounded,
+        accent: AppColors.warning,
+        onTap: () => _openRecordsHub(RecordsHubTab.finance),
+      ),
+      _RecordsShortcutSpec(
+        title: '待办时间线',
+        description: '按日期回看待办、提醒和当天发生的事项。',
+        icon: Icons.event_note_rounded,
+        accent: AppColors.inkBlue,
+        onTap: () => _openRecordsHub(RecordsHubTab.tasks),
+      ),
+      _RecordsShortcutSpec(
+        title: '健康记录',
+        description: '查疫苗、用药、就诊和相关事项的时间线。',
+        icon: Icons.vaccines_rounded,
+        accent: AppColors.success,
+        onTap: () => _openRecordsHub(RecordsHubTab.health),
+      ),
+    ];
+
     return AppSurface(
-      isFlat: true,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      backgroundColor: Colors.white.withValues(alpha: 0.72),
-      child: const Wrap(
-        spacing: 10,
-        runSpacing: 10,
+      padding: EdgeInsets.all(context.isCompact ? 16 : 18),
+      radius: context.isCompact ? 28 : 30,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _FutureFilterChip(
-            icon: Icons.attach_money_rounded,
-            label: '支出分类',
+          const AppSectionHeader(
+            eyebrow: '结构化记录',
+            title: '不是占位入口，点进去就能查',
+            description: '如果这页已经识别并保存过，下面这些入口会直接查询现有结构化数据。',
           ),
-          _FutureFilterChip(
-            icon: Icons.event_note_rounded,
-            label: '待办时间线',
-          ),
-          _FutureFilterChip(
-            icon: Icons.vaccines_rounded,
-            label: '健康记录',
-          ),
-          _FutureFilterChip(
-            icon: Icons.auto_awesome_rounded,
-            label: 'AI 洞察',
-            accent: AppColors.aiAccent,
-          ),
+          const SizedBox(height: 16),
+          if (context.isCompact)
+            Column(
+              children: cards
+                  .map(
+                    (spec) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _RecordsShortcutCard(spec: spec),
+                    ),
+                  )
+                  .toList(growable: false),
+            )
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: cards
+                  .map(
+                    (spec) => Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          right: spec == cards.last ? 0 : 8,
+                        ),
+                        child: _RecordsShortcutCard(spec: spec),
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
         ],
       ),
     );
@@ -327,8 +426,8 @@ class _NoteListScreenState extends State<NoteListScreen> {
           isSearching ? Icons.search_off_rounded : Icons.auto_stories_outlined,
       title: isSearching ? '没有找到相关笔记' : '先写下第一条想法吧',
       description: isSearching
-          ? '换一个关键词，或直接打开最近的笔记继续整理。'
-          : '新建一页手写内容后，可以继续识别、编辑，再整理成可执行的信息。',
+          ? '换一个关键词，或者打开结构化记录按分类、时间线继续查。'
+          : '新建一页手写内容后，可以继续识别、编辑，再整理成可查询的信息。',
       action: isSearching
           ? TextButton(
               onPressed: () {
@@ -377,6 +476,15 @@ class _NoteListScreenState extends State<NoteListScreen> {
     );
   }
 
+  void _openRecordsHub(RecordsHubTab tab) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => RecordsHubScreen(initialTab: tab),
+      ),
+    );
+  }
+
   void _createNewNote() {
     Navigator.push(
       context,
@@ -403,115 +511,41 @@ class _NoteListScreenState extends State<NoteListScreen> {
       const SnackBar(content: Text('这条笔记已删除。')),
     );
   }
-
-  String _summarizeOcr(List<Note> notes) {
-    if (notes.isEmpty) return '暂无内容';
-    final recognized = notes
-        .where((note) => (note.recognizedText ?? '').trim().isNotEmpty)
-        .length;
-    if (recognized == 0) return '待识别';
-    return '$recognized/${notes.length} 已识别';
-  }
 }
 
-class _OverviewTile extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-
-  const _OverviewTile({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
+class _ListSectionHeader extends StatelessWidget {
+  const _ListSectionHeader();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      width: 164,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F7F8),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: const Color(0xFFDDE8EE),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, size: 18, color: AppColors.inkBlue),
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('最近笔记', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              Text(
+                '按最近更新时间排序，方便快速回到刚记过的内容。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          Text(label, style: theme.textTheme.bodySmall),
-          const SizedBox(height: 4),
-          Text(value, style: theme.textTheme.titleLarge),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-class _FutureOverviewTile extends StatelessWidget {
-  const _FutureOverviewTile();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 220,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.aiAccentSoft,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: AppColors.aiAccent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.auto_awesome_rounded,
-              size: 18,
-              color: AppColors.aiAccent,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '智能周报',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: AppColors.aiAccent,
-                ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '后续这里会聚合你的消费、事项和健康记录。',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FutureFilterChip extends StatelessWidget {
+class _HeroPill extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color accent;
 
-  const _FutureFilterChip({
+  const _HeroPill({
     required this.icon,
     required this.label,
     this.accent = AppColors.textSecondary,
@@ -522,16 +556,16 @@ class _FutureFilterChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: accent == AppColors.aiAccent
-            ? AppColors.aiAccentSoft
-            : const Color(0xFFF4F6F7),
+        color: accent == AppColors.success
+            ? const Color(0xFFE7F2EC)
+            : const Color(0xFFF2F5F6),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: accent),
-          const SizedBox(width: 8),
+          Icon(icon, size: 15, color: accent),
+          const SizedBox(width: 6),
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -540,6 +574,148 @@ class _FutureFilterChip extends StatelessWidget {
                 ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ActionPanelSpec {
+  final IconData icon;
+  final String title;
+  final String description;
+  final VoidCallback onTap;
+
+  const _ActionPanelSpec({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.onTap,
+  });
+}
+
+class _ActionPanelCard extends StatelessWidget {
+  final _ActionPanelSpec spec;
+
+  const _ActionPanelCard({required this.spec});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: spec.onTap,
+      borderRadius: BorderRadius.circular(26),
+      child: AppSurface(
+        padding: const EdgeInsets.all(16),
+        radius: 26,
+        backgroundColor: Colors.white.withValues(alpha: 0.92),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFFDDE8EE),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(spec.icon, color: AppColors.inkBlue, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(spec.title,
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    spec.description,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RecordsShortcutSpec {
+  final String title;
+  final String description;
+  final IconData icon;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _RecordsShortcutSpec({
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.accent,
+    required this.onTap,
+  });
+}
+
+class _RecordsShortcutCard extends StatelessWidget {
+  final _RecordsShortcutSpec spec;
+
+  const _RecordsShortcutCard({required this.spec});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: spec.onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: spec.accent.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: spec.accent.withValues(alpha: 0.18),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: spec.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Icon(spec.icon, color: spec.accent, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    spec.title,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    spec.description,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right_rounded, color: spec.accent),
+          ],
+        ),
       ),
     );
   }
