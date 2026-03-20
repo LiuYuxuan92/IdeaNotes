@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -16,6 +17,7 @@ import '../../shared/widgets/ocr_result_banner.dart';
 import '../notelist/bloc/note_list_bloc.dart';
 import 'bloc/canvas_bloc.dart';
 import 'canvas_toolbar.dart';
+import 'services/handwriting_recognition_service.dart';
 import 'services/canvas_save_service.dart';
 import 'widgets/canvas_painter.dart';
 
@@ -49,6 +51,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   final GlobalKey _canvasRepaintKey = GlobalKey();
   List<Offset> _currentPoints = <Offset>[];
   late final CanvasBloc _canvasBloc;
+  late final HandwritingRecognitionService _handwritingRecognitionService;
 
   String _ocrResult = '';
   String _ocrHelperText = '写完后点一下“识别”，再决定是否复制、编辑或保存。';
@@ -63,6 +66,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   void initState() {
     super.initState();
     _canvasBloc = CanvasBloc();
+    _handwritingRecognitionService = HandwritingRecognitionService();
     _initOcrEngine();
     if (widget.noteId != null) {
       _loadExistingNote();
@@ -118,6 +122,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   void dispose() {
     _canvasBloc.close();
     _ocrEngine?.dispose();
+    unawaited(_handwritingRecognitionService.dispose());
     super.dispose();
   }
 
@@ -539,6 +544,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
     return hasSavedStrokes || hasCurrentStroke;
   }
 
+  bool get _hasEraserEdits {
+    return _canvasBloc.state.strokes.any((stroke) => stroke.isEraser);
+  }
+
   Rect? _calculateInkBounds(CanvasState state) {
     double minX = double.infinity;
     double minY = double.infinity;
@@ -676,48 +685,64 @@ class _CanvasScreenState extends State<CanvasScreen> {
       return;
     }
 
+    final hasEraserEdits = _hasEraserEdits;
     setState(() {
       _isRecognizing = true;
       _ocrResult = '';
       _ocrBannerState = OcrBannerState.processing;
-      _ocrHelperText = '正在读取并放大你的笔迹区域。识别完成后，你可以直接复制或手动修正。';
+      _ocrHelperText = hasEraserEdits
+          ? '正在优先做手写识别。检测到你用过橡皮，必要时会回退到图片识别。'
+          : '正在准备手写识别模型并识别你的笔迹。必要时会自动回退到图片识别。';
       _isResultPanelExpanded = true;
     });
 
     try {
-      if (_ocrEngine == null) {
-        setState(() {
-          _ocrBannerState = OcrBannerState.warning;
-          _ocrHelperText = '当前设备暂不支持文字识别。你仍然可以先保存手写内容。';
-        });
-        return;
+      final boundary = _canvasRepaintKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      final writingArea = boundary?.size ?? const Size(1080, 1440);
+
+      HandwritingRecognitionResult? handwritingResult;
+      Object? handwritingError;
+      try {
+        handwritingResult = await _handwritingRecognitionService.recognize(
+          strokes: _canvasBloc.state.strokes,
+          writingArea: writingArea,
+        );
+      } catch (error) {
+        handwritingError = error;
       }
 
-      final imageBytes = widget.captureCanvasForOcr != null
-          ? await widget.captureCanvasForOcr!.call()
-          : await _captureCanvasForOcr();
-      if (imageBytes == null) {
-        setState(() {
-          _ocrBannerState = OcrBannerState.error;
-          _ocrHelperText = '没有成功捕获到画布图像。请先确认画布已渲染完成，再重试一次。';
-        });
-        return;
-      }
+      var result = handwritingResult?.text.trim() ?? '';
+      var usedImageFallback = false;
 
-      final lines = await _ocrEngine!.recognizeText(imageBytes);
-      final result = lines
-          .map((line) => line.trim())
-          .where((line) => line.isNotEmpty)
-          .join('\n');
+      if (result.isEmpty) {
+        setState(() {
+          _ocrHelperText = handwritingError == null
+              ? '手写识别没有读出结果，正在回退到图片识别。'
+              : '手写识别暂时不可用，正在回退到图片识别。';
+        });
+        result = await _runImageOcrFallback();
+        usedImageFallback = true;
+      }
 
       setState(() {
         _ocrResult = result;
         if (result.isEmpty) {
           _ocrBannerState = OcrBannerState.warning;
-          _ocrHelperText = '这次没有读清文本。建议把关键字写大一些、每行留一点间距，再重试一次。';
+          _ocrHelperText = handwritingError == null
+              ? '这次仍没有读清文本。请把数字或关键字写大一些、分开一点，再试一次。'
+              : '当前设备上的手写识别没有完成，图片识别也没读到文本。请把字写得更大更清楚后重试。';
         } else {
           _ocrBannerState = OcrBannerState.success;
-          _ocrHelperText = '识别完成。建议先快速改一下错字，再决定是否保存到笔记。';
+          if (usedImageFallback) {
+            _ocrHelperText = '本次由图片识别兜底完成。建议先快速校对，再决定是否保存。';
+          } else if (handwritingResult?.downloadedAnyModel == true) {
+            _ocrHelperText = '首次手写识别模型已准备完成，识别成功。建议先快速校对再保存。';
+          } else if (hasEraserEdits) {
+            _ocrHelperText = '手写识别完成。你用过橡皮，建议多看一眼结果再保存。';
+          } else {
+            _ocrHelperText = '手写识别完成。建议先快速改一下错字，再决定是否保存到笔记。';
+          }
         }
       });
 
@@ -731,6 +756,25 @@ class _CanvasScreenState extends State<CanvasScreen> {
     } finally {
       if (mounted) setState(() => _isRecognizing = false);
     }
+  }
+
+  Future<String> _runImageOcrFallback() async {
+    if (_ocrEngine == null) {
+      return '';
+    }
+
+    final imageBytes = widget.captureCanvasForOcr != null
+        ? await widget.captureCanvasForOcr!.call()
+        : await _captureCanvasForOcr();
+    if (imageBytes == null || imageBytes.isEmpty) {
+      return '';
+    }
+
+    final lines = await _ocrEngine!.recognizeText(imageBytes);
+    return lines
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .join('\n');
   }
 
   Future<void> _copyOcrResult() async {
