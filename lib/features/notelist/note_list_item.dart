@@ -264,12 +264,6 @@ class _GridCardBody extends StatelessWidget {
               label: hasText ? '${_lineCount(summary)} 行识别结果' : '待识别',
               emphasized: hasText,
             ),
-            if (hasText)
-              const _MetaChip(
-                icon: Icons.auto_awesome_rounded,
-                label: 'AI 查询预留',
-                highlightedColor: AppColors.aiAccent,
-              ),
           ],
         ),
         const SizedBox(height: 12),

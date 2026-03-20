@@ -26,6 +26,7 @@ dependencies:
   
   # OCR - Text Recognition (cross-platform alternative to Apple Vision)
   google_mlkit_text_recognition: ^0.15.0
+  google_mlkit_commons: ^0.11.1
   
   # Handwriting/Drawing - using built-in Flutter CustomPaint
   # pencildraw package doesn't exist, using CustomPainter instead

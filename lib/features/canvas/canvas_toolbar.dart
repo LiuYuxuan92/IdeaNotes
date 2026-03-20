@@ -11,6 +11,7 @@ class CanvasToolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<CanvasBloc, CanvasState>(
       builder: (context, state) {
+        final isCompact = context.isCompact;
         const tools = [
           _ToolSpec(
             tool: CanvasTool.pen,
@@ -49,8 +50,13 @@ class CanvasToolbar extends StatelessWidget {
             maxWidth: context.isLarge ? 920 : double.infinity,
           ),
           child: AppSurface(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            radius: 32,
+            padding: EdgeInsets.fromLTRB(
+              isCompact ? 10 : 14,
+              isCompact ? 10 : 12,
+              isCompact ? 10 : 14,
+              isCompact ? 10 : 12,
+            ),
+            radius: isCompact ? 28 : 32,
             backgroundColor: Colors.white.withValues(alpha: 0.96),
             border: BorderSide(
               color: Theme.of(context).colorScheme.outlineVariant,
@@ -68,7 +74,16 @@ class CanvasToolbar extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    _ToolbarLead(tool: state.currentTool),
+                    if (isCompact)
+                      Text(
+                        _ToolbarLead.labelForTool(state.currentTool),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                      )
+                    else
+                      _ToolbarLead(tool: state.currentTool),
                     const Spacer(),
                     _CompactActionButton(
                       icon: Icons.undo_rounded,
@@ -96,7 +111,7 @@ class CanvasToolbar extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: isCompact ? 8 : 12),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
@@ -165,7 +180,7 @@ class _ToolbarLead extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          _labelForTool(tool),
+          labelForTool(tool),
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 color: AppColors.textPrimary,
               ),
@@ -174,7 +189,7 @@ class _ToolbarLead extends StatelessWidget {
     );
   }
 
-  String _labelForTool(CanvasTool tool) {
+  static String labelForTool(CanvasTool tool) {
     switch (tool) {
       case CanvasTool.pen:
         return '当前使用墨蓝笔';
@@ -203,6 +218,8 @@ class _ToolPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = context.isCompact;
+
     return Tooltip(
       message: spec.label,
       child: InkWell(
@@ -211,7 +228,10 @@ class _ToolPill extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: EdgeInsets.symmetric(
+            horizontal: isCompact ? 10 : 12,
+            vertical: isCompact ? 8 : 10,
+          ),
           decoration: BoxDecoration(
             color:
                 isSelected ? const Color(0xFFE8EFF3) : const Color(0xFFF5F7F8),
@@ -227,15 +247,16 @@ class _ToolPill extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 34,
-                height: 34,
+                width: isCompact ? 30 : 34,
+                height: isCompact ? 30 : 34,
                 decoration: BoxDecoration(
                   color: spec.swatch.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(isCompact ? 12 : 14),
                 ),
-                child: Icon(spec.icon, size: 18, color: spec.swatch),
+                child: Icon(spec.icon,
+                    size: isCompact ? 16 : 18, color: spec.swatch),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: isCompact ? 8 : 10),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -248,10 +269,10 @@ class _ToolPill extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: isCompact ? 3 : 4),
                   Container(
-                    width: 18,
-                    height: 4,
+                    width: isCompact ? 14 : 18,
+                    height: isCompact ? 3 : 4,
                     decoration: BoxDecoration(
                       color: spec.swatch,
                       borderRadius: BorderRadius.circular(999),
@@ -284,6 +305,7 @@ class _CompactActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = context.isCompact;
     final foreground = !enabled
         ? AppColors.disabled
         : isDanger
@@ -301,7 +323,10 @@ class _CompactActionButton extends StatelessWidget {
         onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(18),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: EdgeInsets.symmetric(
+            horizontal: isCompact ? 10 : 12,
+            vertical: isCompact ? 8 : 10,
+          ),
           decoration: BoxDecoration(
             color: background,
             borderRadius: BorderRadius.circular(18),

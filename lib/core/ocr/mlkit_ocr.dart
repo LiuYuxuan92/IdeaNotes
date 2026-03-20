@@ -1,57 +1,67 @@
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import 'ocr_engine.dart';
 
-/// Google MLKit OCR 实现
-/// 用于 Android 系统
+/// Google ML Kit OCR 实现
+/// 当前用于 Android 与 iOS 的本地文字识别。
 class MlKitOcr implements OcrEngine {
-  // MLKit 依赖 flutter_mlkit_text_recognition
-  // 注意：实际使用时需要在 pubspec.yaml 中添加依赖：
-  // flutter_mlkit_text_recognition: ^0.11.0
-
-  dynamic _textRecognizer;
+  TextRecognizer? _chineseRecognizer;
+  TextRecognizer? _latinRecognizer;
   bool _isInitialized = false;
 
   @override
-  String get engineName => 'MLKit OCR';
+  String get engineName => 'ML Kit OCR';
 
   Future<void> _ensureInitialized() async {
     if (_isInitialized) return;
 
     try {
-      // 尝试导入并初始化 MLKit
-      // import 'package:flutter_mlkit_text_recognition/flutter_mlkit_text_recognition.dart';
-      // _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      _chineseRecognizer ??=
+          TextRecognizer(script: TextRecognitionScript.chinese);
+      _latinRecognizer ??= TextRecognizer(script: TextRecognitionScript.latin);
       _isInitialized = true;
-    } catch (e) {
-      debugPrint('Failed to initialize MLKit: $e');
+    } catch (e, stackTrace) {
+      debugPrint('Failed to initialize ML Kit OCR: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      _chineseRecognizer = null;
+      _latinRecognizer = null;
       _isInitialized = false;
     }
   }
 
   @override
   Future<bool> isAvailable() async {
-    if (Platform.isAndroid) {
-      await _ensureInitialized();
-      return _isInitialized;
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      return false;
     }
-    return false;
+
+    await _ensureInitialized();
+    return _isInitialized;
   }
 
   @override
   Future<List<String>> recognizeText(Uint8List imageBytes) async {
-    await _ensureInitialized();
+    if (imageBytes.isEmpty) return [];
 
-    if (!_isInitialized) {
-      throw Exception('MLKit OCR not initialized');
-    }
-
+    Directory? tempDir;
     try {
-      return _mockRecognizeText(imageBytes);
-    } catch (e) {
-      debugPrint('MLKit OCR error: $e');
+      tempDir = await Directory.systemTemp.createTemp('ideanotes_mlkit_ocr_');
+      final tempFile = File('${tempDir.path}/canvas.png');
+      await tempFile.writeAsBytes(imageBytes, flush: true);
+      return recognizeTextFromFile(tempFile.path);
+    } catch (e, stackTrace) {
+      debugPrint('ML Kit OCR bytes error: $e');
+      debugPrintStack(stackTrace: stackTrace);
       return [];
+    } finally {
+      if (tempDir != null) {
+        try {
+          await tempDir.delete(recursive: true);
+        } catch (_) {}
+      }
     }
   }
 
@@ -60,30 +70,80 @@ class MlKitOcr implements OcrEngine {
     await _ensureInitialized();
 
     if (!_isInitialized) {
-      throw Exception('MLKit OCR not initialized');
+      throw Exception('ML Kit OCR not initialized');
+    }
+
+    final file = File(imagePath);
+    if (!await file.exists()) {
+      return [];
     }
 
     try {
-      final file = File(imagePath);
-      if (await file.exists()) {
-        final bytes = await file.readAsBytes();
-        return _mockRecognizeText(bytes);
-      }
-      return [];
-    } catch (e) {
-      debugPrint('MLKit OCR file error: $e');
+      final inputImage = InputImage.fromFilePath(imagePath);
+      final chineseLines = await _processWith(_chineseRecognizer, inputImage);
+      final latinLines = await _processWith(_latinRecognizer, inputImage);
+      return _mergeResults(primary: chineseLines, secondary: latinLines);
+    } catch (e, stackTrace) {
+      debugPrint('ML Kit OCR file error: $e');
+      debugPrintStack(stackTrace: stackTrace);
       return [];
     }
   }
 
-  Future<List<String>> _mockRecognizeText(Uint8List imageBytes) async {
-    return [];
+  Future<List<String>> _processWith(
+    TextRecognizer? recognizer,
+    InputImage inputImage,
+  ) async {
+    if (recognizer == null) return const [];
+
+    final recognizedText = await recognizer.processImage(inputImage);
+    return _normalizeLines(recognizedText.text);
+  }
+
+  List<String> _normalizeLines(String text) {
+    return text
+        .split(RegExp(r'\r?\n'))
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  List<String> _mergeResults({
+    required List<String> primary,
+    required List<String> secondary,
+  }) {
+    if (primary.isEmpty) return secondary;
+    if (secondary.isEmpty) return primary;
+
+    final primaryJoined = primary.join('\n');
+    final secondaryJoined = secondary.join('\n');
+
+    if (primaryJoined == secondaryJoined) {
+      return primary;
+    }
+    if (primaryJoined.contains(secondaryJoined)) {
+      return primary;
+    }
+    if (secondaryJoined.contains(primaryJoined)) {
+      return secondary;
+    }
+
+    final merged = <String>[];
+    final seen = <String>{};
+    for (final line in [...primary, ...secondary]) {
+      final signature = line.replaceAll(RegExp(r'\s+'), '');
+      if (signature.isEmpty || !seen.add(signature)) continue;
+      merged.add(line);
+    }
+    return merged;
   }
 
   @override
   void dispose() {
-    _textRecognizer?.close();
-    _textRecognizer = null;
+    _chineseRecognizer?.close();
+    _latinRecognizer?.close();
+    _chineseRecognizer = null;
+    _latinRecognizer = null;
     _isInitialized = false;
   }
 }

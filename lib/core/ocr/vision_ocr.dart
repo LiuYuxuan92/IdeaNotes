@@ -1,84 +1,36 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
 
 import 'mlkit_ocr.dart';
 import 'ocr_engine.dart';
 
-/// Apple Vision OCR 实现
-/// 用于 iOS 系统
+/// iOS OCR 入口。
+/// 当前统一复用 ML Kit 的跨平台实现，避免平台分支出现空实现。
 class VisionOcr implements OcrEngine {
-  dynamic _textRecognizer;
-  bool _isInitialized = false;
+  final MlKitOcr _delegate = MlKitOcr();
 
   @override
-  String get engineName => 'Apple Vision OCR';
-
-  Future<void> _ensureInitialized() async {
-    if (_isInitialized) return;
-
-    try {
-      _isInitialized = true;
-    } catch (e) {
-      debugPrint('Failed to initialize Vision OCR: $e');
-      _isInitialized = false;
-    }
-  }
+  String get engineName => 'iOS OCR';
 
   @override
   Future<bool> isAvailable() async {
-    if (Platform.isIOS) {
-      await _ensureInitialized();
-      return _isInitialized;
-    }
-    return false;
+    if (!Platform.isIOS) return false;
+    return _delegate.isAvailable();
   }
 
   @override
-  Future<List<String>> recognizeText(Uint8List imageBytes) async {
-    await _ensureInitialized();
-
-    if (!_isInitialized) {
-      throw Exception('Vision OCR not initialized');
-    }
-
-    try {
-      return _mockRecognizeText(imageBytes);
-    } catch (e) {
-      debugPrint('Vision OCR error: $e');
-      return [];
-    }
+  Future<List<String>> recognizeText(Uint8List imageBytes) {
+    return _delegate.recognizeText(imageBytes);
   }
 
   @override
-  Future<List<String>> recognizeTextFromFile(String imagePath) async {
-    await _ensureInitialized();
-
-    if (!_isInitialized) {
-      throw Exception('Vision OCR not initialized');
-    }
-
-    try {
-      final file = File(imagePath);
-      if (await file.exists()) {
-        final bytes = await file.readAsBytes();
-        return _mockRecognizeText(bytes);
-      }
-      return [];
-    } catch (e) {
-      debugPrint('Vision OCR file error: $e');
-      return [];
-    }
-  }
-
-  Future<List<String>> _mockRecognizeText(Uint8List imageBytes) async {
-    return [];
+  Future<List<String>> recognizeTextFromFile(String imagePath) {
+    return _delegate.recognizeTextFromFile(imagePath);
   }
 
   @override
   void dispose() {
-    _textRecognizer?.close();
-    _textRecognizer = null;
-    _isInitialized = false;
+    _delegate.dispose();
   }
 }
 

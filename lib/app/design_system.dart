@@ -336,6 +336,10 @@ class AppBottomDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final showDescription =
+        expanded && description != null && description!.trim().isNotEmpty;
+    final verticalPadding = expanded ? 14.0 : 10.0;
+
     return AppSurface(
       padding: EdgeInsets.zero,
       radius: 30,
@@ -348,7 +352,8 @@ class AppBottomDrawer extends StatelessWidget {
             onTap: onToggle,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
+              padding:
+                  EdgeInsets.fromLTRB(18, verticalPadding, 14, verticalPadding),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -363,7 +368,7 @@ class AppBottomDrawer extends StatelessWidget {
                         const SizedBox(height: 6),
                         Text(title,
                             style: Theme.of(context).textTheme.titleMedium),
-                        if (description != null) ...[
+                        if (showDescription) ...[
                           const SizedBox(height: 4),
                           Text(
                             description!,

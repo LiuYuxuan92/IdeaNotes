@@ -29,10 +29,11 @@ class OcrResultBanner extends StatelessWidget {
     final theme = Theme.of(context);
     final palette = _palette;
     final hasResult = result.trim().isNotEmpty;
+    final isCompact = context.isCompact;
 
     return AppSurface(
-      padding: const EdgeInsets.all(18),
-      radius: 30,
+      padding: EdgeInsets.all(isCompact ? 14 : 18),
+      radius: isCompact ? 26 : 30,
       backgroundColor: palette.background,
       border: BorderSide(color: palette.border),
       child: Column(
@@ -42,13 +43,14 @@ class OcrResultBanner extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: isCompact ? 40 : 44,
+                height: isCompact ? 40 : 44,
                 decoration: BoxDecoration(
                   color: palette.pill,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(isCompact ? 14 : 16),
                 ),
-                child: Icon(_icon, color: palette.accent, size: 20),
+                child: Icon(_icon,
+                    color: palette.accent, size: isCompact ? 18 : 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -77,33 +79,35 @@ class OcrResultBanner extends StatelessWidget {
               _StateChip(label: _statusLabel, accent: palette.accent),
             ],
           ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _ActionChip(
-                icon: Icons.copy_all_rounded,
-                label: '复制',
-                enabled: hasResult,
-                onTap: hasResult ? onCopy : null,
-              ),
-              _ActionChip(
-                icon: Icons.edit_outlined,
-                label: '编辑',
-                enabled: hasResult,
-                onTap: hasResult ? onEdit : null,
-              ),
-              if (showSaveButton)
+          if (hasResult) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
                 _ActionChip(
-                  icon: Icons.save_outlined,
-                  label: '保存',
-                  enabled: hasResult,
-                  onTap: hasResult ? onSave : null,
+                  icon: Icons.copy_all_rounded,
+                  label: '复制',
+                  enabled: true,
+                  onTap: onCopy,
                 ),
-            ],
-          ),
-          const SizedBox(height: 12),
+                _ActionChip(
+                  icon: Icons.edit_outlined,
+                  label: '编辑',
+                  enabled: true,
+                  onTap: onEdit,
+                ),
+                if (showSaveButton)
+                  _ActionChip(
+                    icon: Icons.save_outlined,
+                    label: '保存',
+                    enabled: true,
+                    onTap: onSave,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -113,24 +117,26 @@ class OcrResultBanner extends StatelessWidget {
                 label: hasResult ? 'OCR 文本' : '等待识别',
               ),
               _TagChip(
-                icon: Icons.rule_rounded,
-                label: hasResult ? '建议人工校对' : '可先保存手写内容',
+                icon: hasResult
+                    ? Icons.fact_check_outlined
+                    : Icons.edit_note_rounded,
+                label: hasResult ? '建议人工校对' : '字写大一点更容易识别',
               ),
-              const _TagChip(
-                icon: Icons.auto_awesome_rounded,
-                label: 'AI 解析预留',
-                accent: AppColors.aiAccent,
-              ),
+              if (hasResult && !isCompact)
+                const _TagChip(
+                  icon: Icons.ios_share_rounded,
+                  label: '可复制和分享',
+                ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: isCompact ? 12 : 16),
           Expanded(
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(isCompact ? 14 : 16),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.82),
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(isCompact ? 18 : 22),
                 border: Border.all(
                   color: palette.border.withValues(alpha: 0.9),
                 ),
@@ -329,19 +335,16 @@ class _ActionChip extends StatelessWidget {
 class _TagChip extends StatelessWidget {
   final IconData icon;
   final String label;
-  final Color accent;
 
   const _TagChip({
     required this.icon,
     required this.label,
-    this.accent = AppColors.textSecondary,
   });
 
   @override
   Widget build(BuildContext context) {
-    final background = accent == AppColors.aiAccent
-        ? AppColors.aiAccentSoft
-        : const Color(0xFFF2F5F6);
+    const accent = AppColors.textSecondary;
+    const background = Color(0xFFF2F5F6);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),

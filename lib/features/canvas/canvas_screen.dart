@@ -1,10 +1,11 @@
-import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:image/image.dart' as img;
 
 import '../../app/design_system.dart';
 import '../../core/models/note.dart';
@@ -167,19 +168,23 @@ class _CanvasScreenState extends State<CanvasScreen> {
         body: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final horizontal = context.isLarge ? 24.0 : 16.0;
+              final isCompact = context.isCompact;
+              final horizontal =
+                  context.isLarge ? 24.0 : (isCompact ? 12.0 : 16.0);
               final largePanelWidth =
                   (constraints.maxWidth * 0.34).clamp(340.0, 420.0).toDouble();
               final phoneDrawerBodyHeight =
-                  (constraints.maxHeight * 0.32).clamp(220.0, 320.0).toDouble();
+                  (constraints.maxHeight * 0.24).clamp(168.0, 220.0).toDouble();
               final phoneDrawerOffset =
-                  _isResultPanelExpanded ? phoneDrawerBodyHeight + 112 : 108.0;
+                  _isResultPanelExpanded ? phoneDrawerBodyHeight + 82.0 : 68.0;
+              final phoneToolbarHeight = isCompact ? 78.0 : 88.0;
               final canvasRightPadding =
                   context.isLarge && _isResultPanelExpanded
                       ? largePanelWidth + 18
                       : 0.0;
-              final canvasBottomPadding =
-                  context.isLarge ? 124.0 : phoneDrawerOffset + 92.0;
+              final canvasBottomPadding = context.isLarge
+                  ? 124.0
+                  : phoneDrawerOffset + phoneToolbarHeight + 12.0;
 
               return Stack(
                 children: [
@@ -244,9 +249,18 @@ class _CanvasScreenState extends State<CanvasScreen> {
   }
 
   Widget _buildCanvasStage(BuildContext context) {
+    final isCompact = context.isCompact;
+    final hasInk = _hasInk;
+    final hasResult = _ocrResult.trim().isNotEmpty;
+
     return AppSurface(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-      radius: 34,
+      padding: EdgeInsets.fromLTRB(
+        isCompact ? 12 : 18,
+        isCompact ? 12 : 18,
+        isCompact ? 12 : 18,
+        isCompact ? 12 : 18,
+      ),
+      radius: isCompact ? 28 : 34,
       gradient: const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -255,39 +269,47 @@ class _CanvasScreenState extends State<CanvasScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AppSectionHeader(
-            eyebrow: '主画布',
-            title: '把注意力放在书写本身',
-            description: context.isLarge
-                ? '右侧结果面板会在你需要时展开，平时让画布保持更沉浸。'
-                : '识别结果会从底部抽屉展开，书写时尽量让画布保持完整。',
-            trailing: _CanvasStatusPill(noteId: _existingNote?.id),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _CanvasMetaPill(
-                icon: Icons.draw_rounded,
-                label: _canvasBloc.state.strokes.isEmpty ? '尚未落笔' : '已有手写内容',
-              ),
-              _CanvasMetaPill(
-                icon: Icons.auto_awesome_rounded,
-                label: _ocrResult.trim().isEmpty ? '等待识别' : '已生成可编辑文本',
-                accent: _ocrResult.trim().isEmpty
-                    ? AppColors.textSecondary
-                    : AppColors.aiAccent,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
+          if (isCompact) ...[
+            _buildCompactCanvasHeader(
+              context,
+              hasInk: hasInk,
+              hasResult: hasResult,
+            ),
+            const SizedBox(height: 10),
+          ] else ...[
+            AppSectionHeader(
+              eyebrow: '主画布',
+              title: '把注意力放在书写本身',
+              description: context.isLarge
+                  ? '右侧结果面板会在你需要时展开，平时让画布保持更沉浸。'
+                  : '手机端会优先保留更多书写空间，识别结果只在需要时从底部展开。',
+              trailing: _CanvasStatusPill(noteId: _existingNote?.id),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _CanvasMetaPill(
+                  icon: Icons.draw_rounded,
+                  label: hasInk ? '已有手写内容' : '尚未落笔',
+                ),
+                _CanvasMetaPill(
+                  icon: Icons.text_snippet_outlined,
+                  label: hasResult ? '已生成识别文本' : '等待识别',
+                  accent:
+                      hasResult ? AppColors.success : AppColors.textSecondary,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
           Expanded(
             child: Container(
               width: double.infinity,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(28),
+                borderRadius: BorderRadius.circular(isCompact ? 22 : 28),
                 border: Border.all(
                   color: Theme.of(context).colorScheme.outlineVariant,
                 ),
@@ -298,7 +320,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                 ),
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
+                borderRadius: BorderRadius.circular(isCompact ? 22 : 28),
                 child: RepaintBoundary(
                   key: _canvasRepaintKey,
                   child: _buildCanvas(),
@@ -308,6 +330,45 @@ class _CanvasScreenState extends State<CanvasScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCompactCanvasHeader(
+    BuildContext context, {
+    required bool hasInk,
+    required bool hasResult,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '先把关键内容写清楚',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                hasInk
+                    ? '手机端已优先保留画布空间，写完后直接点右上角“识别”。'
+                    : '先开始书写，尽量把关键字写大一点，识别会更稳。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        _CanvasMetaPill(
+          icon: hasResult
+              ? Icons.check_circle_outline_rounded
+              : Icons.draw_rounded,
+          label: hasResult ? '已识别' : (hasInk ? '可识别' : '未落笔'),
+          accent: hasResult ? AppColors.success : AppColors.textSecondary,
+        ),
+      ],
     );
   }
 
@@ -431,6 +492,30 @@ class _CanvasScreenState extends State<CanvasScreen> {
     }
   }
 
+  Future<Uint8List?> _captureCanvasForOcr() async {
+    final boundary = _canvasRepaintKey.currentContext?.findRenderObject()
+        as RenderRepaintBoundary?;
+    if (boundary == null) return null;
+
+    final devicePixelRatio =
+        MediaQuery.maybeOf(context)?.devicePixelRatio ?? 3.0;
+    final pixelRatio = devicePixelRatio.clamp(3.0, 4.5).toDouble();
+    final imageBytes = await _captureCanvas(pixelRatio: pixelRatio);
+    if (imageBytes == null) return null;
+
+    final inkBounds = _calculateInkBounds(_canvasBloc.state);
+    if (inkBounds == null) {
+      return imageBytes;
+    }
+
+    return _cropInkImageForOcr(
+      pngBytes: imageBytes,
+      logicalCanvasSize: boundary.size,
+      inkBounds: inkBounds,
+      pixelRatio: pixelRatio,
+    );
+  }
+
   Future<Uint8List?> _captureThumbnail() async {
     try {
       final boundary = _canvasRepaintKey.currentContext?.findRenderObject()
@@ -442,6 +527,99 @@ class _CanvasScreenState extends State<CanvasScreen> {
     } catch (_) {
       return null;
     }
+  }
+
+  bool get _hasInk {
+    final state = _canvasBloc.state;
+    final hasSavedStrokes = state.strokes.any(
+      (stroke) => !stroke.isEraser && stroke.points.isNotEmpty,
+    );
+    final hasCurrentStroke =
+        _currentPoints.isNotEmpty && state.currentTool != CanvasTool.eraser;
+    return hasSavedStrokes || hasCurrentStroke;
+  }
+
+  Rect? _calculateInkBounds(CanvasState state) {
+    double minX = double.infinity;
+    double minY = double.infinity;
+    double maxX = 0;
+    double maxY = 0;
+    var hasPoints = false;
+
+    void addStrokePoints(List<Offset> points, double strokeWidth) {
+      if (points.isEmpty) return;
+      hasPoints = true;
+      final padding = math.max(strokeWidth, 8);
+      for (final point in points) {
+        minX = math.min(minX, point.dx - padding);
+        minY = math.min(minY, point.dy - padding);
+        maxX = math.max(maxX, point.dx + padding);
+        maxY = math.max(maxY, point.dy + padding);
+      }
+    }
+
+    for (final stroke in state.strokes) {
+      if (stroke.isEraser) continue;
+      addStrokePoints(stroke.points, stroke.strokeWidth);
+    }
+
+    if (_currentPoints.isNotEmpty && state.currentTool != CanvasTool.eraser) {
+      addStrokePoints(_currentPoints, state.currentStrokeWidth);
+    }
+
+    if (!hasPoints) return null;
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
+  }
+
+  Uint8List _cropInkImageForOcr({
+    required Uint8List pngBytes,
+    required Size logicalCanvasSize,
+    required Rect inkBounds,
+    required double pixelRatio,
+  }) {
+    final decoded = img.decodeImage(pngBytes);
+    if (decoded == null) return pngBytes;
+
+    final logicalPadding = math.min(
+      math.max(logicalCanvasSize.shortestSide * 0.12, 28.0),
+      72.0,
+    );
+    final expandedBounds = Rect.fromLTRB(
+      math.max(0, inkBounds.left - logicalPadding),
+      math.max(0, inkBounds.top - logicalPadding),
+      math.min(logicalCanvasSize.width, inkBounds.right + logicalPadding),
+      math.min(logicalCanvasSize.height, inkBounds.bottom + logicalPadding),
+    );
+
+    final cropX = (expandedBounds.left * pixelRatio).floor();
+    final cropY = (expandedBounds.top * pixelRatio).floor();
+    final cropWidth = math.max(1, (expandedBounds.width * pixelRatio).ceil());
+    final cropHeight = math.max(1, (expandedBounds.height * pixelRatio).ceil());
+
+    var cropped = img.copyCrop(
+      decoded,
+      x: cropX,
+      y: cropY,
+      width: cropWidth,
+      height: cropHeight,
+    );
+
+    final longEdge = math.max(cropped.width, cropped.height);
+    if (longEdge < 1600) {
+      cropped = cropped.width >= cropped.height
+          ? img.copyResize(
+              cropped,
+              width: 1600,
+              interpolation: img.Interpolation.linear,
+            )
+          : img.copyResize(
+              cropped,
+              height: 1600,
+              interpolation: img.Interpolation.linear,
+            );
+    }
+
+    return Uint8List.fromList(img.encodePng(cropped));
   }
 
   Future<void> _saveNote() async {
@@ -488,15 +666,24 @@ class _CanvasScreenState extends State<CanvasScreen> {
   }
 
   Future<void> _runOcr() async {
+    if (!_hasInk) {
+      setState(() {
+        _ocrResult = '';
+        _ocrBannerState = OcrBannerState.warning;
+        _ocrHelperText = '还没有可识别的手写内容。先写几笔，再点右上角“识别”。';
+        _isResultPanelExpanded = true;
+      });
+      return;
+    }
+
     setState(() {
       _isRecognizing = true;
       _ocrResult = '';
       _ocrBannerState = OcrBannerState.processing;
-      _ocrHelperText = '正在读取当前画布。识别完成后，你可以直接复制或手动修正。';
+      _ocrHelperText = '正在读取并放大你的笔迹区域。识别完成后，你可以直接复制或手动修正。';
       _isResultPanelExpanded = true;
     });
 
-    Directory? tempDir;
     try {
       if (_ocrEngine == null) {
         setState(() {
@@ -508,7 +695,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
       final imageBytes = widget.captureCanvasForOcr != null
           ? await widget.captureCanvasForOcr!.call()
-          : await _captureCanvas(pixelRatio: 2.0);
+          : await _captureCanvasForOcr();
       if (imageBytes == null) {
         setState(() {
           _ocrBannerState = OcrBannerState.error;
@@ -517,11 +704,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
         return;
       }
 
-      tempDir = await Directory.systemTemp.createTemp('ideanotes_ocr_');
-      final tempFile = File('${tempDir.path}/canvas.png');
-      await tempFile.writeAsBytes(imageBytes);
-
-      final lines = await _ocrEngine!.recognizeTextFromFile(tempFile.path);
+      final lines = await _ocrEngine!.recognizeText(imageBytes);
       final result = lines
           .map((line) => line.trim())
           .where((line) => line.isNotEmpty)
@@ -531,10 +714,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
         _ocrResult = result;
         if (result.isEmpty) {
           _ocrBannerState = OcrBannerState.warning;
-          _ocrHelperText = '这次没有读到清晰文本。你可以写得更满一些，或把关键字写得更工整后再试。';
+          _ocrHelperText = '这次没有读清文本。建议把关键字写大一些、每行留一点间距，再重试一次。';
         } else {
           _ocrBannerState = OcrBannerState.success;
-          _ocrHelperText = '识别完成。建议先快速检查错字，再决定是否保存到笔记。';
+          _ocrHelperText = '识别完成。建议先快速改一下错字，再决定是否保存到笔记。';
         }
       });
 
@@ -546,11 +729,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
         _ocrHelperText = '识别没有完成。你可以再试一次；如果持续失败，先保存当前手写内容。';
       });
     } finally {
-      if (tempDir != null) {
-        try {
-          await tempDir.delete(recursive: true);
-        } catch (_) {}
-      }
       if (mounted) setState(() => _isRecognizing = false);
     }
   }

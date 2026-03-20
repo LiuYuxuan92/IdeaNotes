@@ -165,7 +165,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
         title: _recognizedText.isEmpty ? '这页内容还没识别' : '这页手写内容已经整理为可阅读文本',
         description: _recognizedText.isEmpty
             ? '你可以回到画布继续补写，或重新识别一次，让内容更容易搜索和整理。'
-            : '左侧保留手写现场，右侧用于核对识别文本与解析结果，后续也会接入 AI 洞察。',
+            : '左侧保留手写现场，右侧用于核对识别文本与解析结果，方便你确认这一页的实际内容。',
         trailing: _buildMeta(context),
       ),
     );
@@ -336,22 +336,19 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
   Widget _buildAiPlaceholder(BuildContext context) {
     final bullets = _entries.isEmpty
         ? const [
-            '未来可按时间汇总一年内支出和事项',
-            '可追溯 OCR 文本与结构化提取来源',
-            '可对宝宝、家庭、工作等主题做连续洞察',
+            '当前页会同时保留手写原稿和 OCR 文本',
+            '识别更完整后，这里会出现可复用的结构化条目',
+            '后续接入 AI 时，会直接基于这些已保存的数据继续增强',
           ]
-        : [
-            '当前已识别 ${_entries.length} 条结构化线索',
-            '后续可自动归并时间线、金额与健康记录',
-            '后续可结合 OCR + AI 做纠错与归类增强',
-          ];
+        : _entrySummaryBullets();
 
     return AiInsightPlaceholder(
-      title: '这页内容正在积累未来可分析的数据',
+      title: _entries.isEmpty ? '这页内容正在等待更完整的识别结果' : '这页已经提取出可复用的信息',
       description: _recognizedText.isEmpty
-          ? '等识别文本更完整后，这里可以生成总结、趋势和跨时间查询结果。'
-          : '当前先保留洞察位，后续可在这里展示支出分类、事项时间线和多主题总结。',
+          ? '先把关键内容识别出来，这里才会继续展示更准确的结构化结果和后续洞察基础。'
+          : '这里先展示当前页已经识别到的数据概况。后续 AI 只会在此基础上继续做归类、纠错和跨时间分析。',
       bullets: bullets,
+      statusLabel: _entries.isEmpty ? '等待识别' : '已提取要点',
     );
   }
 
@@ -363,7 +360,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
           const AppSectionHeader(
             eyebrow: '解析结果',
             title: '系统已帮你拆出重点信息',
-            description: '你可以先浏览拆分后的信息，未来这里还会补充提取来源与 AI 审计能力。',
+            description: '系统会先按当前识别文本拆出花费、事项和备忘，方便你核对这一页的重点。',
           ),
           const SizedBox(height: 16),
           if (_entries.isEmpty)
@@ -372,18 +369,26 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
               title: '暂时没有解析结果',
               description: '这不影响保存和查看。等文本更完整后，再识别一次会更容易提取结构。',
             )
-          else ...[
+          else
             ..._entries.map((entry) => EntryRow(entry: entry)),
-            const SizedBox(height: 12),
-            TextButton.icon(
-              onPressed: null,
-              icon: const Icon(Icons.source_outlined),
-              label: const Text('查看提取来源（敬请期待）'),
-            ),
-          ],
         ],
       ),
     );
+  }
+
+  List<String> _entrySummaryBullets() {
+    final expenseCount =
+        _entries.where((entry) => entry.type == NoteEntryType.expense).length;
+    final eventCount =
+        _entries.where((entry) => entry.type == NoteEntryType.event).length;
+    final memoCount =
+        _entries.where((entry) => entry.type == NoteEntryType.memo).length;
+
+    return [
+      '当前共识别出 ${_entries.length} 条结构化线索',
+      '其中包含 $expenseCount 条花费、$eventCount 条事项、$memoCount 条备忘',
+      '这些结果会和 OCR 文本一起保存，便于后续搜索、复查和继续增强',
+    ];
   }
 
   String _formattedDate(DateTime date) =>
