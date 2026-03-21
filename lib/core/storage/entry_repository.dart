@@ -37,6 +37,21 @@ class EntryRepository {
     });
   }
 
+  Future<AiExtractionAuditSnapshot?> getLatestAiExtraction(String noteId) async {
+    final db = await databaseHelper.database;
+    final rows = await db.query(
+      'ai_extractions',
+      where: 'note_id = ?',
+      whereArgs: [noteId],
+      orderBy: 'created_at DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return AiExtractionAuditSnapshot.fromMap(rows.first);
+  }
+
   Future<int> deleteEntriesForNote(String noteId) async {
     final db = await databaseHelper.database;
     return db.delete(
@@ -151,6 +166,17 @@ class EntryRepository {
     final built = _buildQuery(query);
     final rows = await db.rawQuery(built.sql, built.args);
     return rows.map(EntryRecord.fromMap).toList();
+  }
+
+  Future<List<EntryRecord>> queryEntriesForNote(String noteId) async {
+    final db = await databaseHelper.database;
+    final rows = await db.query(
+      'entries',
+      where: 'note_id = ?',
+      whereArgs: [noteId],
+      orderBy: 'occurred_date DESC, created_at DESC',
+    );
+    return rows.map(EntryRecord.fromMap).toList(growable: false);
   }
 
   Future<List<EntryRecord>> queryEntriesByDate(
@@ -329,6 +355,48 @@ class EntryRepository {
       return null;
     }
     return trimmed;
+  }
+}
+
+class AiExtractionAuditSnapshot {
+  final String id;
+  final String noteId;
+  final String engineName;
+  final String engineModel;
+  final String promptVersion;
+  final String inputText;
+  final String rawResponseJson;
+  final String normalizedEntriesJson;
+  final String status;
+  final DateTime createdAt;
+
+  const AiExtractionAuditSnapshot({
+    required this.id,
+    required this.noteId,
+    required this.engineName,
+    required this.engineModel,
+    required this.promptVersion,
+    required this.inputText,
+    required this.rawResponseJson,
+    required this.normalizedEntriesJson,
+    required this.status,
+    required this.createdAt,
+  });
+
+  factory AiExtractionAuditSnapshot.fromMap(Map<String, dynamic> map) {
+    return AiExtractionAuditSnapshot(
+      id: map['id'] as String,
+      noteId: map['note_id'] as String,
+      engineName: map['engine_name'] as String,
+      engineModel: map['engine_model'] as String,
+      promptVersion: map['prompt_version'] as String,
+      inputText: map['input_text'] as String,
+      rawResponseJson: map['raw_response_json'] as String,
+      normalizedEntriesJson: map['normalized_entries_json'] as String,
+      status: map['status'] as String,
+      createdAt:
+          DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
+    );
   }
 }
 

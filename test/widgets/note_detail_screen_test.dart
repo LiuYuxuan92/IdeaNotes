@@ -3,11 +3,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart' as sqlite3_open;
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:idea_notes/core/models/note.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
+import 'package:idea_notes/core/storage/database_migrations.dart';
 import 'package:idea_notes/features/notedetail/note_detail_screen.dart';
+import 'package:sqlite3/open.dart' as sqlite3_open;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 DynamicLibrary _openSqlite() {
   const candidates = [
@@ -49,54 +50,8 @@ Future<void> _setUpInMemoryDatabase() async {
   final db = await _testDatabaseFactory.openDatabase(
     inMemoryDatabasePath,
     options: OpenDatabaseOptions(
-      version: 3,
-      onCreate: (db, version) async {
-        await db.execute('PRAGMA foreign_keys = ON');
-        await db.execute('''
-          CREATE TABLE notebooks (
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE notes (
-            id TEXT PRIMARY KEY,
-            notebook_id TEXT,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            canvas_data BLOB,
-            snapshot_image_path TEXT,
-            thumbnail_image_path TEXT,
-            recognized_text TEXT,
-            FOREIGN KEY (notebook_id) REFERENCES notebooks (id) ON DELETE CASCADE
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE note_entries (
-            id TEXT PRIMARY KEY,
-            note_id TEXT NOT NULL,
-            type TEXT NOT NULL,
-            raw_text TEXT NOT NULL,
-            amount TEXT,
-            category TEXT,
-            event_title TEXT,
-            event_date INTEGER,
-            is_completed INTEGER DEFAULT 0,
-            memo_text TEXT,
-            created_at INTEGER NOT NULL,
-            FOREIGN KEY (note_id) REFERENCES notes (id) ON DELETE CASCADE
-          )
-        ''');
-        final now = DateTime.now().millisecondsSinceEpoch;
-        await db.insert('notebooks', {
-          'id': 'default-notebook',
-          'title': '我的笔记',
-          'created_at': now,
-          'updated_at': now,
-        });
-      },
+      version: kDatabaseVersion,
+      onCreate: createDatabaseSchema,
     ),
   );
 
@@ -117,8 +72,8 @@ void main() {
       await DatabaseHelper.instance.close();
     });
 
-    testWidgets('优先展示数据库中已持久化的结构化条目', (tester) async {
-      final now = DateTime.now();
+    testWidgets('优先展示结构化条目与 AI 审计信息', (tester) async {
+      final now = DateTime(2026, 3, 21, 9, 30);
       final note = Note(
         id: 'note-1',
         notebookId: 'default-notebook',
@@ -139,16 +94,55 @@ void main() {
       });
 
       await DatabaseHelper.instance.insertNoteEntry({
-        'id': 'entry-1',
+        'id': 'legacy-entry-1',
         'note_id': note.id,
-        'type': 'event',
-        'raw_text': '记得买牛奶',
+        'type': 'memo',
+        'raw_text': '旧版解析结果',
         'amount': null,
         'category': null,
-        'event_title': '买牛奶',
+        'event_title': null,
         'event_date': null,
-        'is_completed': 1,
-        'memo_text': null,
+        'is_completed': 0,
+        'memo_text': '旧版解析结果',
+        'created_at': now.millisecondsSinceEpoch,
+      });
+
+      final db = await DatabaseHelper.instance.database;
+      await db.insert('entries', {
+        'id': 'entry-1',
+        'note_id': note.id,
+        'entry_type': 'task',
+        'domain': 'life',
+        'occurred_at': now.millisecondsSinceEpoch,
+        'occurred_date': '2026-03-21',
+        'end_at': null,
+        'title': '买牛奶',
+        'summary': '提醒去超市买牛奶',
+        'raw_text': '记得买牛奶',
+        'normalized_json': '{}',
+        'amount_value': null,
+        'amount_currency': null,
+        'category_l1': '生活',
+        'category_l2': '采购',
+        'status': 'pending',
+        'confidence': 0.96,
+        'is_user_confirmed': 0,
+        'source_engine': 'rule+ai',
+        'source_version': '1.0',
+        'created_at': now.millisecondsSinceEpoch,
+        'updated_at': now.millisecondsSinceEpoch,
+      });
+
+      await db.insert('ai_extractions', {
+        'id': 'ai-1',
+        'note_id': note.id,
+        'engine_name': 'deepseek',
+        'engine_model': 'deepseek-chat',
+        'prompt_version': '1.0',
+        'input_text': '记得买牛奶',
+        'raw_response_json': '{}',
+        'normalized_entries_json': '{"entries":[]}',
+        'status': 'success',
         'created_at': now.millisecondsSinceEpoch,
       });
 
@@ -161,8 +155,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('解析结果'), findsWidgets);
-      expect(find.text('记得买牛奶'), findsWidgets);
+      expect(find.text('买牛奶'), findsOneWidget);
+      expect(find.text('规则 + AI'), findsOneWidget);
+      expect(find.text('deepseek-chat'), findsWidgets);
       expect(find.text('识别文本'), findsOneWidget);
+      expect(find.text('旧版解析结果'), findsNothing);
     });
   });
 }

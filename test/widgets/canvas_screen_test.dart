@@ -1,14 +1,18 @@
+import 'dart:convert';
 import 'dart:ffi' show DynamicLibrary;
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart' as sqlite3_open;
+import 'package:idea_notes/core/extraction/extraction_models.dart';
+import 'package:idea_notes/core/extraction/text_understanding_engine.dart';
 import 'package:idea_notes/core/storage/database_migrations.dart';
 import 'package:idea_notes/features/canvas/canvas_screen.dart';
+import 'package:idea_notes/features/canvas/services/canvas_ai_preview_service.dart';
 import 'package:idea_notes/features/canvas/services/canvas_save_service.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
+import 'package:sqlite3/open.dart' as sqlite3_open;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 DynamicLibrary _openSqlite() {
@@ -40,6 +44,27 @@ final _testDatabaseFactory = createDatabaseFactoryFfi(
   ffiInit: _ffiInit,
   noIsolate: true,
 );
+
+class _FakeTextUnderstandingEngine implements TextUnderstandingEngine {
+  @override
+  String get engineName => 'fake-ai';
+
+  final TextUnderstandingResult result;
+
+  const _FakeTextUnderstandingEngine({
+    required this.result,
+  });
+
+  @override
+  Future<TextUnderstandingResult> extractStructuredData(
+    ExtractionRequest request,
+  ) async {
+    return result;
+  }
+
+  @override
+  Future<bool> isAvailable() async => true;
+}
 
 Future<void> _setUpInMemoryDatabase() async {
   databaseFactory = _testDatabaseFactory;
@@ -238,6 +263,54 @@ void main() {
       expect(entries.length, 1);
       expect(entries.first['raw_text'], '记得买牛奶');
       expect(entries.first['type'], 'event');
+    });
+
+    testWidgets('可打开 AI 整理预览并看到结构化条目', (tester) async {
+      await _setLargeSurface(tester);
+      addTearDown(() => _resetSurface(tester));
+      await _insertNote(id: 'note-ai-preview', recognizedText: '明天早上去药店');
+
+      final aiPreviewService = CanvasAiPreviewService(
+        engine: _FakeTextUnderstandingEngine(
+          result: TextUnderstandingResult.success(
+            rawResponse: jsonEncode({
+              'entries': [
+                {
+                  'entry_id': 'ai-entry-1',
+                  'entry_type': 'task',
+                  'domain': 'life',
+                  'title': '去药店',
+                  'summary': '明天早上去药店办事',
+                  'raw_text': '明天早上去药店',
+                  'occurred_date': '2026-03-22',
+                },
+              ],
+            }),
+            latency: const Duration(milliseconds: 80),
+            modelName: 'deepseek-preview',
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CanvasScreen(
+            noteId: 'note-ai-preview',
+            aiPreviewServiceOverride: aiPreviewService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('AI整理预览'), findsOneWidget);
+
+      await tester.tap(find.text('AI整理预览'));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('这是保存前的 AI 整理结果'), findsOneWidget);
+      expect(find.text('去药店'), findsOneWidget);
+      expect(find.textContaining('fake-ai · deepseek-preview'), findsOneWidget);
     });
   });
 }
