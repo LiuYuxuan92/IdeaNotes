@@ -532,7 +532,7 @@ class AiInsightPlaceholder extends StatelessWidget {
   }
 }
 
-class EmptyStateView extends StatelessWidget {
+class EmptyStateView extends StatefulWidget {
   final IconData icon;
   final String title;
   final String description;
@@ -547,48 +547,91 @@ class EmptyStateView extends StatelessWidget {
   });
 
   @override
+  State<EmptyStateView> createState() => _EmptyStateViewState();
+}
+
+class _EmptyStateViewState extends State<EmptyStateView>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scaleAnimation;
+  late final Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _scaleAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.elasticOut,
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    );
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 360),
-        child: AppSurface(
-          padding: const EdgeInsets.fromLTRB(28, 30, 28, 28),
-          backgroundColor: const Color(0xFFF9FAFB),
-          isFlat: true,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDDE8EE),
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Icon(icon, size: 34, color: AppColors.inkBlue),
+    return Semantics(
+      label: '${widget.title}。${widget.description}',
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: AppSurface(
+              padding: const EdgeInsets.fromLTRB(28, 30, 28, 28),
+              backgroundColor: const Color(0xFFF9FAFB),
+              isFlat: true,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ScaleTransition(
+                      scale: _scaleAnimation,
+                      child: Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFDDE8EE),
+                          borderRadius: BorderRadius.circular(22),
+                        ),
+                        child: Icon(widget.icon, size: 34, color: AppColors.inkBlue),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      widget.title,
+                      style: theme.textTheme.titleMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      widget.description,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (widget.action != null) ...[
+                      const SizedBox(height: 18),
+                      widget.action!,
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 18),
-                Text(
-                  title,
-                  style: theme.textTheme.titleMedium,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  description,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                if (action != null) ...[
-                  const SizedBox(height: 18),
-                  action!,
-                ],
-              ],
+              ),
             ),
           ),
         ),

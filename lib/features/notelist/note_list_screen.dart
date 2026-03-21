@@ -19,22 +19,34 @@ class NoteListScreen extends StatefulWidget {
   State<NoteListScreen> createState() => _NoteListScreenState();
 }
 
-class _NoteListScreenState extends State<NoteListScreen> {
+class _NoteListScreenState extends State<NoteListScreen>
+    with TickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
   bool _isSearchExpanded = false;
+  AnimationController? _searchAnimController;
+  Animation<double>? _searchAnimation;
 
   @override
   void initState() {
     super.initState();
     context.read<NoteListBloc>().add(LoadNotes());
     _searchController.addListener(() => setState(() {}));
+    _searchAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _searchAnimation = CurvedAnimation(
+      parent: _searchAnimController!,
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();
+    _searchAnimController?.dispose();
     super.dispose();
   }
 
@@ -67,14 +79,17 @@ class _NoteListScreenState extends State<NoteListScreen> {
                       child: _buildHeader(context, state),
                     ),
                   ),
-                  if (_isSearchExpanded)
-                    SliverPadding(
-                      padding:
-                          EdgeInsets.fromLTRB(horizontal, 0, horizontal, 12),
-                      sliver: SliverToBoxAdapter(
+                  SliverToBoxAdapter(
+                    child: SizeTransition(
+                      sizeFactor: _searchAnimation!,
+                      axisAlignment: -1,
+                      child: Padding(
+                        padding:
+                            EdgeInsets.fromLTRB(horizontal, 0, horizontal, 12),
                         child: _buildSearchBar(context),
                       ),
                     ),
+                  ),
                   if (state.status == NoteListStatus.loaded &&
                       state.filteredNotes.isNotEmpty)
                     SliverPadding(
@@ -86,7 +101,7 @@ class _NoteListScreenState extends State<NoteListScreen> {
                     ),
                   SliverPadding(
                     padding:
-                        EdgeInsets.fromLTRB(horizontal, 0, horizontal, 120),
+                        EdgeInsets.fromLTRB(horizontal, 0, horizontal, 80),
                     sliver: _buildBody(context, state),
                   ),
                 ],
@@ -239,15 +254,22 @@ class _NoteListScreenState extends State<NoteListScreen> {
     ];
 
     if (context.isCompact) {
-      return Column(
-        children: cards
-            .map(
-              (spec) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _ActionPanelCard(spec: spec),
-              ),
-            )
-            .toList(growable: false),
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        child: Row(
+          children: cards
+              .map(
+                (spec) => Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: SizedBox(
+                    width: 260,
+                    child: _ActionPanelCard(spec: spec),
+                  ),
+                ),
+              )
+              .toList(growable: false),
+        ),
       );
     }
 
@@ -305,15 +327,22 @@ class _NoteListScreenState extends State<NoteListScreen> {
           ),
           const SizedBox(height: 16),
           if (context.isCompact)
-            Column(
-              children: cards
-                  .map(
-                    (spec) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _RecordsShortcutCard(spec: spec),
-                    ),
-                  )
-                  .toList(growable: false),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              child: Row(
+                children: cards
+                    .map(
+                      (spec) => Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: SizedBox(
+                          width: 240,
+                          child: _RecordsShortcutCard(spec: spec),
+                        ),
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
             )
           else
             Row(
@@ -393,11 +422,14 @@ class _NoteListScreenState extends State<NoteListScreen> {
             delegate: SliverChildBuilderDelegate(
               (context, index) {
                 final note = state.filteredNotes[index];
-                return NoteListItem(
-                  note: note,
-                  isGridMode: true,
-                  onTap: () => _openNoteDetail(note),
-                  onDelete: () => _deleteNote(note.id),
+                return _StaggeredEntry(
+                  index: index,
+                  child: NoteListItem(
+                    note: note,
+                    isGridMode: true,
+                    onTap: () => _openNoteDetail(note),
+                    onDelete: () => _deleteNote(note.id),
+                  ),
                 );
               },
               childCount: state.filteredNotes.length,
@@ -414,10 +446,29 @@ class _NoteListScreenState extends State<NoteListScreen> {
           itemCount: state.filteredNotes.length,
           itemBuilder: (context, index) {
             final note = state.filteredNotes[index];
-            return NoteListItem(
-              note: note,
-              onTap: () => _openNoteDetail(note),
-              onDelete: () => _deleteNote(note.id),
+            return Dismissible(
+              key: ValueKey(note.id),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 24),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(28),
+                ),
+                child: const Icon(Icons.delete_outline_rounded,
+                    color: AppColors.error),
+              ),
+              confirmDismiss: (_) => _confirmDismiss(context),
+              onDismissed: (_) => _deleteNote(note.id),
+              child: _StaggeredEntry(
+                index: index,
+                child: NoteListItem(
+                  note: note,
+                  onTap: () => _openNoteDetail(note),
+                  onDelete: () => _deleteNote(note.id),
+                ),
+              ),
             );
           },
           separatorBuilder: (_, __) => const SizedBox(height: 0),
@@ -467,7 +518,10 @@ class _NoteListScreenState extends State<NoteListScreen> {
   void _toggleSearch() {
     setState(() {
       _isSearchExpanded = !_isSearchExpanded;
-      if (!_isSearchExpanded) {
+      if (_isSearchExpanded) {
+        _searchAnimController?.forward();
+      } else {
+        _searchAnimController?.reverse();
         _searchController.clear();
         context.read<NoteListBloc>().add(const SearchNotes(''));
       }
@@ -526,6 +580,88 @@ class _NoteListScreenState extends State<NoteListScreen> {
     context.read<NoteListBloc>().add(DeleteNote(noteId));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('这条笔记已删除。')),
+    );
+  }
+
+  Future<bool> _confirmDismiss(BuildContext context) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('删除这条笔记？'),
+            content: const Text('删除后，手写内容和识别结果都会一起移除，无法恢复。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('先保留'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                child: const Text('确认删除'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+}
+
+class _StaggeredEntry extends StatefulWidget {
+  final int index;
+  final Widget child;
+
+  const _StaggeredEntry({required this.index, required this.child});
+
+  @override
+  State<_StaggeredEntry> createState() => _StaggeredEntryState();
+}
+
+class _StaggeredEntryState extends State<_StaggeredEntry>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    );
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.08),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    ));
+    Future.delayed(
+      Duration(milliseconds: (widget.index * 50).clamp(0, 400)),
+      () {
+        if (mounted) _controller.forward();
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: widget.child,
+      ),
     );
   }
 }

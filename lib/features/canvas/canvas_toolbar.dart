@@ -220,12 +220,15 @@ class _ToolPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final isCompact = context.isCompact;
 
-    return Tooltip(
-      message: spec.label,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: AnimatedContainer(
+    return Semantics(
+      label: '切换到${spec.label}',
+      selected: isSelected,
+      child: Tooltip(
+        message: spec.label,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(22),
+          child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
           padding: EdgeInsets.symmetric(
@@ -256,33 +259,46 @@ class _ToolPill extends StatelessWidget {
                 child: Icon(spec.icon,
                     size: isCompact ? 16 : 18, color: spec.swatch),
               ),
-              SizedBox(width: isCompact ? 8 : 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    spec.label,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: isSelected
-                              ? AppColors.inkBlue
-                              : AppColors.textPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                  SizedBox(height: isCompact ? 3 : 4),
-                  Container(
-                    width: isCompact ? 14 : 18,
-                    height: isCompact ? 3 : 4,
-                    decoration: BoxDecoration(
-                      color: spec.swatch,
-                      borderRadius: BorderRadius.circular(999),
+              if (!isCompact) ...[
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      spec.label,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: isSelected
+                                ? AppColors.inkBlue
+                                : AppColors.textPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
                     ),
+                    const SizedBox(height: 4),
+                    Container(
+                      width: 18,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: spec.swatch,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ],
+                ),
+              ] else ...[
+                const SizedBox(width: 4),
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: spec.swatch,
+                    shape: BoxShape.circle,
                   ),
-                ],
-              ),
+                ),
+              ],
             ],
           ),
         ),
+      ),
       ),
     );
   }

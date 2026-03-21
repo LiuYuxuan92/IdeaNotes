@@ -309,7 +309,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
   }
 
   Widget _buildCanvasCard(BuildContext context, {bool isPinned = false}) {
-    final preview = Container(
+    final previewContent = Container(
       width: double.infinity,
       constraints: const BoxConstraints(minHeight: 240),
       decoration: BoxDecoration(
@@ -355,7 +355,18 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
             description: '这里保留了原始书写状态，方便你核对字迹、布局和上下文。',
           ),
           const SizedBox(height: 16),
-          if (isPinned) Expanded(child: preview) else preview,
+          if (isPinned)
+            Expanded(
+              child: Hero(
+                tag: 'note-thumb-${widget.note.id}',
+                child: previewContent,
+              ),
+            )
+          else
+            Hero(
+              tag: 'note-thumb-${widget.note.id}',
+              child: previewContent,
+            ),
         ],
       ),
     );

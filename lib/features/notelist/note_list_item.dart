@@ -37,16 +37,29 @@ class NoteListItem extends StatelessWidget {
             onConfirmDelete: () => _confirmDelete(context),
           );
 
-    return AppSurface(
-      margin: EdgeInsets.only(bottom: isGridMode ? 0 : 14),
-      padding: EdgeInsets.all(isGridMode ? 14 : 16),
-      radius: 28,
-      backgroundColor: Colors.white.withValues(alpha: 0.98),
-      border: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
-        child: content,
+    final semanticLabel = _buildSemanticLabel();
+
+    return Semantics(
+      label: semanticLabel,
+      button: true,
+      child: AppSurface(
+        margin: EdgeInsets.only(bottom: isGridMode ? 0 : 14),
+        padding: EdgeInsets.zero,
+        radius: 28,
+        backgroundColor: Colors.white.withValues(alpha: 0.98),
+        border: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(24),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(24),
+            child: Padding(
+              padding: EdgeInsets.all(isGridMode ? 14 : 16),
+              child: content,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -61,6 +74,14 @@ class NoteListItem extends StatelessWidget {
         .toList(growable: false);
     if (lines.isEmpty) return _emptySummary;
     return lines.take(3).join('\n');
+  }
+
+  String _buildSemanticLabel() {
+    final text = note.recognizedText?.trim();
+    final hasText = text != null && text.isNotEmpty;
+    final dateStr = _formatDate(note.updatedAt);
+    final status = hasText ? '已识别' : '待识别';
+    return '笔记, 更新于$dateStr, $status';
   }
 
   void _confirmDelete(BuildContext context) {
@@ -300,7 +321,7 @@ class _NoteThumbnail extends StatelessWidget {
   Widget build(BuildContext context) {
     final borderRadius = BorderRadius.circular(22);
 
-    return Container(
+    final thumbnail = Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
@@ -318,10 +339,23 @@ class _NoteThumbnail extends StatelessWidget {
             ? Image.file(
                 File(note.snapshotImagePath!),
                 fit: BoxFit.cover,
+                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                  if (wasSynchronouslyLoaded) return child;
+                  return AnimatedOpacity(
+                    opacity: frame == null ? 0 : 1,
+                    duration: const Duration(milliseconds: 200),
+                    child: child,
+                  );
+                },
                 errorBuilder: (_, __, ___) => const _ThumbnailPlaceholder(),
               )
             : const _ThumbnailPlaceholder(),
       ),
+    );
+
+    return Hero(
+      tag: 'note-thumb-${note.id}',
+      child: thumbnail,
     );
   }
 }
