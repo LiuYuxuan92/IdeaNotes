@@ -19,8 +19,7 @@ class IdeaNotesApp extends StatelessWidget {
         title: 'IdeaNotes',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
-        darkTheme: AppTheme.light(),
-        themeMode: ThemeMode.system,
+        themeMode: ThemeMode.light,
         home: const NoteListScreen(),
       ),
     );

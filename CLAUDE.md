@@ -49,7 +49,7 @@ This is a Flutter app using **BLoC** for state management, **SQLite** (sqflite) 
 
 ### Navigation
 
-No named routes or go_router. Navigation is imperative via `Navigator.push`. `NoteListScreen` is the initial route. Both `NoteListBloc` and `CanvasBloc` are provided globally at app root via `MultiBlocProvider` in `app/app.dart`.
+No named routes or go_router. Navigation is imperative via `Navigator.push`. `NoteListScreen` is the initial route. `NoteListBloc` is provided globally at app root via `BlocProvider` in `app/app.dart`. `CanvasBloc` is created per-screen inside `CanvasScreen` and disposed on exit.
 
 ### Key Data Flow
 

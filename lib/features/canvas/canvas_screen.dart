@@ -585,7 +585,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     try {
       final previewService = widget.aiPreviewServiceOverride ??
           CanvasAiPreviewService(
-            engine: const DeepSeekTextUnderstandingEngine(),
+            engine: DeepSeekTextUnderstandingEngine(),
           );
       result = await previewService.preview(
         existingNote: _existingNote,
@@ -906,31 +906,28 @@ class _CanvasScreenState extends State<CanvasScreen> {
   }
 
   void _onPanStart(DragStartDetails details) {
-    setState(() {
-      _currentPoints = <Offset>[details.localPosition];
-    });
+    _currentPoints = <Offset>[details.localPosition];
+    setState(() {});
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
-    setState(() {
-      _currentPoints = <Offset>[..._currentPoints, details.localPosition];
-    });
+    _currentPoints.add(details.localPosition);
+    setState(() {});
   }
 
   void _onPanEnd(BuildContext context, CanvasState state) {
     if (_currentPoints.isNotEmpty) {
       context.read<CanvasBloc>().add(
             StrokeAdded(
-              points: _currentPoints,
+              points: List<Offset>.of(_currentPoints),
               color: state.currentColor,
               strokeWidth: state.currentStrokeWidth,
               isEraser: state.currentTool == CanvasTool.eraser,
             ),
           );
     }
-    setState(() {
-      _currentPoints = <Offset>[];
-    });
+    _currentPoints = <Offset>[];
+    setState(() {});
   }
 
   Future<Uint8List?> _captureCanvas({double pixelRatio = 2.0}) async {
@@ -1086,7 +1083,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       final saveService = widget.saveServiceOverride ??
           CanvasSaveService(
             databaseHelper: DatabaseHelper.instance,
-            textUnderstandingEngine: const DeepSeekTextUnderstandingEngine(),
+            textUnderstandingEngine: DeepSeekTextUnderstandingEngine(),
           );
       final canvasData = _canvasBloc.serializeCurrentStrokes();
       final snapshotBytes = widget.captureCanvasForSave != null

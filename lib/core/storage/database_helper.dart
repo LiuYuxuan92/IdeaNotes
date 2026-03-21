@@ -116,10 +116,14 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> searchNotes(String query) async {
     final db = await database;
+    final escaped = query
+        .replaceAll('\\', '\\\\')
+        .replaceAll('%', '\\%')
+        .replaceAll('_', '\\_');
     return await db.query(
       'notes',
-      where: 'recognized_text LIKE ?',
-      whereArgs: ['%$query%'],
+      where: "recognized_text LIKE ? ESCAPE '\\'",
+      whereArgs: ['%$escaped%'],
       orderBy: 'updated_at DESC',
     );
   }

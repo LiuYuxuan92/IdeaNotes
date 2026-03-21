@@ -44,12 +44,14 @@ class ImageStorage {
   /// 返回保存后的文件路径
   static Future<String> saveSnapshot(Uint8List imageBytes, String noteId) async {
     final snapshotDir = await _getSnapshotDirectory();
+    // Clean up old snapshots for this note to prevent file accumulation.
+    await _deleteImagesInDirectory(snapshotDir, noteId);
     final fileName = '${noteId}_${_uuid.v4()}.png';
     final filePath = '${snapshotDir.path}/$fileName';
-    
+
     final file = File(filePath);
     await file.writeAsBytes(imageBytes);
-    
+
     return filePath;
   }
 
@@ -58,10 +60,12 @@ class ImageStorage {
   static Future<String?> saveThumbnail(Uint8List imageBytes, String noteId) async {
     final decoded = img.decodeImage(imageBytes);
     if (decoded == null) return null;
-    final thumbnail = img.copyResize(decoded, width: 200, height: 200);
+    final thumbnail = img.copyResize(decoded, width: 200);
     final thumbnailBytes = Uint8List.fromList(img.encodePng(thumbnail));
 
     final thumbnailDir = await _getThumbnailDirectory();
+    // Clean up old thumbnails for this note to prevent file accumulation.
+    await _deleteImagesInDirectory(thumbnailDir, noteId);
     final fileName = '${noteId}_thumb_${_uuid.v4()}.png';
     final filePath = '${thumbnailDir.path}/$fileName';
 

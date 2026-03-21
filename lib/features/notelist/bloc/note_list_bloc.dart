@@ -95,8 +95,6 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
     try {
       final notesData = await databaseHelper.getNotes();
       final notes = notesData.map((data) => Note.fromMap(data)).toList();
-      // 按更新时间倒序排列
-      notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
       emit(state.copyWith(
         status: NoteListStatus.loaded,
@@ -121,10 +119,8 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
       ));
     } else {
       final filtered = state.notes.where((note) {
-        // 搜索标题和识别文本
-        final title = note.id.toLowerCase();
         final recognizedText = note.recognizedText?.toLowerCase() ?? '';
-        return title.contains(query) || recognizedText.contains(query);
+        return recognizedText.contains(query);
       }).toList();
 
       emit(state.copyWith(
@@ -190,6 +186,6 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
 
   Future<void> _onRefreshNotes(
       RefreshNotes event, Emitter<NoteListState> emit) async {
-    add(LoadNotes());
+    await _onLoadNotes(LoadNotes(), emit);
   }
 }

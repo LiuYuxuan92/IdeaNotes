@@ -7,7 +7,8 @@ import 'text_understanding_engine.dart';
 class DeepSeekTextUnderstandingEngine implements TextUnderstandingEngine {
   static const String _defaultEndpoint =
       'https://api.deepseek.com/chat/completions';
-  static const String _defaultApiKey = 'sk-6c543564507b4918ad2c810967d34f50';
+  static final String _defaultApiKey =
+      Platform.environment['DEEPSEEK_API_KEY'] ?? '';
   static const String _defaultModel = 'deepseek-chat';
 
   final String endpoint;
@@ -16,13 +17,13 @@ class DeepSeekTextUnderstandingEngine implements TextUnderstandingEngine {
   final Duration requestTimeout;
   final HttpClient Function()? httpClientFactory;
 
-  const DeepSeekTextUnderstandingEngine({
+  DeepSeekTextUnderstandingEngine({
     this.endpoint = _defaultEndpoint,
-    this.apiKey = _defaultApiKey,
+    String? apiKey,
     this.model = _defaultModel,
     this.requestTimeout = const Duration(seconds: 45),
     this.httpClientFactory,
-  });
+  }) : apiKey = apiKey ?? _defaultApiKey;
 
   @override
   String get engineName => 'deepseek';
