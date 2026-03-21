@@ -57,17 +57,11 @@ class CanvasToolbar extends StatelessWidget {
               isCompact ? 10 : 12,
             ),
             radius: isCompact ? 28 : 32,
-            backgroundColor: Colors.white.withValues(alpha: 0.96),
+            backgroundColor: Colors.white.withValues(alpha: 0.97),
             border: BorderSide(
               color: Theme.of(context).colorScheme.outlineVariant,
             ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x120D1B26),
-                blurRadius: 24,
-                offset: Offset(0, 12),
-              ),
-            ],
+            boxShadow: AppShadows.floating,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -226,31 +220,35 @@ class _ToolPill extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(22),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
           padding: EdgeInsets.symmetric(
             horizontal: isCompact ? 10 : 12,
             vertical: isCompact ? 8 : 10,
           ),
           decoration: BoxDecoration(
-            color:
-                isSelected ? const Color(0xFFE8EFF3) : const Color(0xFFF5F7F8),
+            color: isSelected
+                ? spec.swatch.withValues(alpha: 0.10)
+                : const Color(0xFFF5F7F8),
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: isSelected
-                  ? AppColors.selection
+                  ? spec.swatch.withValues(alpha: 0.50)
                   : Theme.of(context).colorScheme.outlineVariant,
-              width: isSelected ? 1.2 : 1,
+              width: isSelected ? 1.4 : 1,
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
                 width: isCompact ? 30 : 34,
                 height: isCompact ? 30 : 34,
                 decoration: BoxDecoration(
-                  color: spec.swatch.withValues(alpha: 0.14),
+                  color: spec.swatch
+                      .withValues(alpha: isSelected ? 0.20 : 0.12),
                   borderRadius: BorderRadius.circular(isCompact ? 12 : 14),
                 ),
                 child: Icon(spec.icon,
@@ -263,18 +261,21 @@ class _ToolPill extends StatelessWidget {
                   Text(
                     spec.label,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: isSelected
-                              ? AppColors.inkBlue
-                              : AppColors.textPrimary,
+                          color: isSelected ? spec.swatch : AppColors.textPrimary,
                           fontWeight: FontWeight.w700,
                         ),
                   ),
                   SizedBox(height: isCompact ? 3 : 4),
-                  Container(
-                    width: isCompact ? 14 : 18,
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOutCubic,
+                    width: isSelected
+                        ? (isCompact ? 20 : 24)
+                        : (isCompact ? 14 : 18),
                     height: isCompact ? 3 : 4,
                     decoration: BoxDecoration(
-                      color: spec.swatch,
+                      color: spec.swatch
+                          .withValues(alpha: isSelected ? 1.0 : 0.55),
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+// ─── Design Tokens ──────────────────────────────────────────────────────────
+
 class AppColors {
   static const Color inkBlue = Color(0xFF203A4D);
   static const Color slateBlue = Color(0xFF35566B);
@@ -19,6 +21,92 @@ class AppColors {
   static const Color aiAccent = Color(0xFF6B5B95);
   static const Color aiAccentSoft = Color(0xFFF1ECF8);
 }
+
+// ─── Gradient Presets ────────────────────────────────────────────────────────
+
+class AppGradients {
+  /// Dark hero banner: navy-blue → teal. Used for the main hero card.
+  static const LinearGradient hero = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF1B3347), Color(0xFF1B3347), Color(0xFF1D4A4A)],
+    stops: [0.0, 0.38, 1.0],
+  );
+
+  /// Warm paper surface. Used for canvas backgrounds.
+  static const LinearGradient paper = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFFBF9F5), Color(0xFFF0F5F8)],
+  );
+
+  /// Subtle white surface gradient for cards on light backgrounds.
+  static const LinearGradient subtleSurface = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFFFFFFF), Color(0xFFF7FAFB)],
+  );
+
+  /// Teal accent strip used for section markers.
+  static const LinearGradient sectionAccent = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [AppColors.inkBlue, AppColors.deepTeal],
+  );
+}
+
+// ─── Shadow Presets ──────────────────────────────────────────────────────────
+
+class AppShadows {
+  /// Subtle two-layer shadow for list cards.
+  static const List<BoxShadow> soft = [
+    BoxShadow(
+      color: Color(0x07203A4D),
+      blurRadius: 6,
+      offset: Offset(0, 2),
+    ),
+    BoxShadow(
+      color: Color(0x0D203A4D),
+      blurRadius: 20,
+      offset: Offset(0, 8),
+    ),
+  ];
+
+  /// Three-layer shadow for prominent surfaces (hero, modals).
+  static const List<BoxShadow> card = [
+    BoxShadow(
+      color: Color(0x06203A4D),
+      blurRadius: 4,
+      offset: Offset(0, 1),
+    ),
+    BoxShadow(
+      color: Color(0x0F203A4D),
+      blurRadius: 20,
+      offset: Offset(0, 8),
+    ),
+    BoxShadow(
+      color: Color(0x07203A4D),
+      blurRadius: 44,
+      offset: Offset(0, 22),
+    ),
+  ];
+
+  /// Deep shadow for floating panels (toolbars, FABs).
+  static const List<BoxShadow> floating = [
+    BoxShadow(
+      color: Color(0x16203A4D),
+      blurRadius: 28,
+      offset: Offset(0, 10),
+    ),
+    BoxShadow(
+      color: Color(0x0A203A4D),
+      blurRadius: 60,
+      offset: Offset(0, 28),
+    ),
+  ];
+}
+
+// ─── Theme ───────────────────────────────────────────────────────────────────
 
 class AppTheme {
   static ThemeData light() {
@@ -562,13 +650,24 @@ class EmptyStateView extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 72,
-                  height: 72,
+                  width: 80,
+                  height: 80,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFDDE8EE),
-                    borderRadius: BorderRadius.circular(22),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFFE8F0F5), Color(0xFFD5E5EE)],
+                    ),
+                    borderRadius: BorderRadius.circular(26),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.inkBlue.withValues(alpha: 0.14),
+                        blurRadius: 18,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
-                  child: Icon(icon, size: 34, color: AppColors.inkBlue),
+                  child: Icon(icon, size: 36, color: AppColors.inkBlue),
                 ),
                 const SizedBox(height: 18),
                 Text(

@@ -21,32 +21,106 @@ class NoteListItem extends StatelessWidget {
     this.isGridMode = false,
   });
 
+  // Determine accent color from dominant entry type
+  Color get _cardAccent {
+    if (note.entries.isEmpty) {
+      final hasText = (note.recognizedText ?? '').trim().isNotEmpty;
+      return hasText
+          ? AppColors.inkBlue.withValues(alpha: 0.35)
+          : AppColors.line.withValues(alpha: 0.5);
+    }
+    var expenseCount = 0;
+    var eventCount = 0;
+    var healthCount = 0;
+    for (final entry in note.entries) {
+      switch (entry.type) {
+        case NoteEntryType.expense:
+          expenseCount++;
+          break;
+        case NoteEntryType.event:
+          eventCount++;
+          break;
+        case NoteEntryType.health:
+          healthCount++;
+          break;
+        case NoteEntryType.memo:
+          break;
+      }
+    }
+    if (expenseCount > 0 &&
+        expenseCount >= eventCount &&
+        expenseCount >= healthCount) {
+      return AppColors.warning;
+    }
+    if (healthCount > 0 && healthCount >= eventCount) {
+      return AppColors.success;
+    }
+    if (eventCount > 0) return AppColors.inkBlue;
+    return AppColors.inkBlue.withValues(alpha: 0.35);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final content = isGridMode
-        ? _GridCardBody(
+    if (isGridMode) {
+      return AppSurface(
+        margin: EdgeInsets.zero,
+        padding: const EdgeInsets.all(14),
+        radius: 28,
+        backgroundColor: Colors.white,
+        border: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+        boxShadow: AppShadows.soft,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(24),
+          child: _GridCardBody(
             note: note,
             summary: _summary,
             onDelete: onDelete,
             onConfirmDelete: () => _confirmDelete(context),
-          )
-        : _ListCardBody(
-            note: note,
-            summary: _summary,
-            onDelete: onDelete,
-            onConfirmDelete: () => _confirmDelete(context),
-          );
+          ),
+        ),
+      );
+    }
 
-    return AppSurface(
-      margin: EdgeInsets.only(bottom: isGridMode ? 0 : 14),
-      padding: EdgeInsets.all(isGridMode ? 14 : 16),
-      radius: 28,
-      backgroundColor: Colors.white.withValues(alpha: 0.98),
-      border: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
-        child: content,
+    // List mode: custom container with left accent stripe
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
+        boxShadow: AppShadows.soft,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(27.5),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Left accent stripe — colour encodes dominant content type
+              Container(width: 3.5, color: _cardAccent),
+              Expanded(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: onTap,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: _ListCardBody(
+                        note: note,
+                        summary: _summary,
+                        onDelete: onDelete,
+                        onConfirmDelete: () => _confirmDelete(context),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -336,28 +410,80 @@ class _ThumbnailPlaceholder extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFF7F5F1), Color(0xFFE3E9ED)],
+          colors: [Color(0xFFF5F3EF), Color(0xFFE5ECF2)],
         ),
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Stack(
         children: [
-          Icon(
-            Icons.draw_rounded,
-            color: AppColors.textMuted.withValues(alpha: 0.82),
-            size: 32,
+          // Notepad ruled-line grid
+          Positioned.fill(
+            child: CustomPaint(painter: _NotepadLinePainter()),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '手写页',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.textMuted,
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.78),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.inkBlue.withValues(alpha: 0.10),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.draw_rounded,
+                    color: AppColors.inkBlue.withValues(alpha: 0.55),
+                    size: 22,
+                  ),
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  '手写页',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.textMuted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
+}
+
+class _NotepadLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFFCBD8E0).withOpacity(0.45)
+      ..strokeWidth = 0.6;
+
+    const step = 16.0;
+    for (double y = step; y < size.height; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+    // Faint left margin line
+    final marginPaint = Paint()
+      ..color = const Color(0xFFE8B4B4).withOpacity(0.40)
+      ..strokeWidth = 0.8;
+    canvas.drawLine(
+      const Offset(20, 0),
+      Offset(20, size.height),
+      marginPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _InsightRow extends StatelessWidget {
