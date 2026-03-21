@@ -8,6 +8,9 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
+
+    <!-- 麦克风权限：用于语音识别输入 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     
     <!-- 存储权限：用于保存和读取笔记数据 -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>

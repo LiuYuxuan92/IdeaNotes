@@ -225,6 +225,12 @@ class _NoteListScreenState extends State<NoteListScreen> {
         onTap: _createNewNote,
       ),
       _ActionPanelSpec(
+        icon: Icons.mic_rounded,
+        title: '语音速记',
+        description: '用语音转成可搜索文本，再交给 AI 和规则整理。',
+        onTap: _createVoiceNote,
+      ),
+      _ActionPanelSpec(
         icon: Icons.search_rounded,
         title: '搜全部内容',
         description: '全文搜索 OCR 原文、金额、日期词和关键词。',
@@ -246,19 +252,18 @@ class _NoteListScreenState extends State<NoteListScreen> {
     }
 
     return Row(
-      children: cards
-          .map(
-            (spec) => Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(
-                  right: spec == cards.first ? 6 : 0,
-                  left: spec == cards.last ? 6 : 0,
-                ),
-                child: _ActionPanelCard(spec: spec),
-              ),
+      children: List.generate(cards.length, (index) {
+        final spec = cards[index];
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: index == 0 ? 0 : 6,
+              right: index == cards.length - 1 ? 0 : 6,
             ),
-          )
-          .toList(growable: false),
+            child: _ActionPanelCard(spec: spec),
+          ),
+        );
+      }),
     );
   }
 
@@ -490,6 +495,18 @@ class _NoteListScreenState extends State<NoteListScreen> {
       context,
       MaterialPageRoute<void>(
         builder: (context) => CanvasScreen(
+          onSave: () => context.read<NoteListBloc>().add(RefreshNotes()),
+        ),
+      ),
+    );
+  }
+
+  void _createVoiceNote() {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => CanvasScreen(
+          openVoiceOnStart: true,
           onSave: () => context.read<NoteListBloc>().add(RefreshNotes()),
         ),
       ),

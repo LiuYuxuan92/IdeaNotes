@@ -57,6 +57,9 @@
     <!-- Microphone Usage - for voice notes (future feature) -->
     <key>NSMicrophoneUsageDescription</key>
     <string>IdeaNotes may use the microphone for voice note recording.</string>
+    <!-- Speech Recognition Usage - for voice to text -->
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>IdeaNotes needs speech recognition to turn your voice into searchable notes.</string>
     <!-- Fingerprint/Face ID for app security -->
     <key>NSFaceIDUsageDescription</key>
     <string>IdeaNotes uses Face ID to secure your private notes.</string>

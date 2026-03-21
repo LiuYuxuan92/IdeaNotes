@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -7,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image/image.dart' as img;
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../app/design_system.dart';
 import '../../core/extraction/extraction_models.dart';
@@ -22,7 +24,9 @@ import 'canvas_toolbar.dart';
 import 'services/canvas_ai_preview_service.dart';
 import 'services/handwriting_recognition_service.dart';
 import 'services/canvas_save_service.dart';
+import 'services/voice_recognition_service.dart';
 import 'widgets/canvas_painter.dart';
+import 'widgets/voice_capture_sheet.dart';
 
 class CanvasScreen extends StatefulWidget {
   final String? noteId;
@@ -34,6 +38,8 @@ class CanvasScreen extends StatefulWidget {
   final Future<Uint8List?> Function()? captureThumbnailForSave;
   final CanvasSaveService? saveServiceOverride;
   final CanvasAiPreviewService? aiPreviewServiceOverride;
+  final VoiceRecognitionService? voiceRecognitionServiceOverride;
+  final bool openVoiceOnStart;
 
   const CanvasScreen({
     super.key,
@@ -46,6 +52,8 @@ class CanvasScreen extends StatefulWidget {
     this.captureThumbnailForSave,
     this.saveServiceOverride,
     this.aiPreviewServiceOverride,
+    this.voiceRecognitionServiceOverride,
+    this.openVoiceOnStart = false,
   });
 
   @override
@@ -76,6 +84,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _initOcrEngine();
     if (widget.noteId != null) {
       _loadExistingNote();
+    }
+    if (widget.openVoiceOnStart && widget.noteId == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_openVoiceCapture());
+      });
     }
   }
 
@@ -156,6 +170,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
                         ? Icons.view_sidebar_rounded
                         : Icons.vertical_align_top_rounded,
               ),
+            ),
+            IconButton(
+              onPressed: (_isSaving || _isRecognizing || _isPreviewingAi)
+                  ? null
+                  : _openVoiceCapture,
+              tooltip: '语音转文字',
+              icon: const Icon(Icons.mic_rounded),
             ),
             IconButton(
               onPressed: _isRecognizing ? null : _runOcr,
@@ -496,6 +517,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
                 icon: const Icon(Icons.text_snippet_outlined),
                 label: Text(hasResult ? '重新识别' : '识别当前页'),
               ),
+              TextButton.icon(
+                onPressed: (_isSaving || _isRecognizing || _isPreviewingAi)
+                    ? null
+                    : _openVoiceCapture,
+                icon: const Icon(Icons.mic_rounded),
+                label: const Text('语音输入'),
+              ),
               if (hasResult)
                 TextButton.icon(
                   onPressed: _showCompactResultSheet,
@@ -577,6 +605,145 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
     setState(() => _isPreviewingAi = false);
     await _showAiPreviewSheet(result);
+  }
+
+  Future<void> _openVoiceCapture() async {
+    final ok = await _ensureVoicePermissions();
+    if (!ok || !mounted) return;
+
+    final service = widget.voiceRecognitionServiceOverride ??
+        SpeechToTextVoiceRecognitionService();
+
+    final media = MediaQuery.of(context);
+    final sheetHeight =
+        media.size.height * (context.isCompact ? 0.82 : 0.78);
+
+    final result = await showModalBottomSheet<VoiceCaptureResult>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: SizedBox(
+            height: sheetHeight,
+            child: VoiceCaptureSheet(
+              service: service,
+              existingText: _ocrResult,
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || result == null) return;
+
+    final incoming = result.text.trim();
+    if (incoming.isEmpty) return;
+
+    setState(() {
+      _ocrResult = _mergeVoiceText(
+        existing: _ocrResult,
+        incoming: incoming,
+        mode: result.writeMode,
+      );
+      _ocrBannerState = OcrBannerState.success;
+      _ocrHelperText = '语音转写已写入。建议先快速校对，再决定是否保存或进行 AI 整理预览。';
+      _isResultPanelExpanded = true;
+    });
+  }
+
+  String _mergeVoiceText({
+    required String existing,
+    required String incoming,
+    required VoiceCaptureWriteMode mode,
+  }) {
+    final trimmedExisting = existing.trimRight();
+    if (mode != VoiceCaptureWriteMode.append ||
+        trimmedExisting.trim().isEmpty) {
+      return incoming;
+    }
+    final needsNewline = !trimmedExisting.endsWith('\n');
+    return needsNewline
+        ? '$trimmedExisting\n$incoming'
+        : '$trimmedExisting$incoming';
+  }
+
+  Future<bool> _ensureVoicePermissions() async {
+    // Voice permission is only meaningful on mobile platforms.
+    if (!(Platform.isAndroid || Platform.isIOS)) {
+      return true;
+    }
+
+    Future<bool> requestPermission(Permission permission, String name) async {
+      final status = await permission.status;
+      if (status.isGranted) return true;
+      final requested = await permission.request();
+      if (requested.isGranted) return true;
+
+      if (!mounted) return false;
+      if (requested.isPermanentlyDenied || requested.isRestricted) {
+        await _showPermissionDialog(
+          title: '需要$name权限',
+          message: '语音转文字需要使用$name。请在系统设置中开启权限后再试。',
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('未获得$name权限，无法开始语音识别。')),
+        );
+      }
+      return false;
+    }
+
+    try {
+      final micOk = await requestPermission(Permission.microphone, '麦克风');
+      if (!micOk) return false;
+
+      if (Platform.isIOS) {
+        final speechOk = await requestPermission(Permission.speech, '语音识别');
+        if (!speechOk) return false;
+      }
+
+      return true;
+    } on MissingPluginException {
+      // Widget tests or platforms without plugin registration.
+      return true;
+    } catch (error) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('无法获取语音权限：$error')),
+      );
+      return false;
+    }
+  }
+
+  Future<void> _showPermissionDialog({
+    required String title,
+    required String message,
+  }) async {
+    final goToSettings = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('去设置'),
+          ),
+        ],
+      ),
+    );
+
+    if (goToSettings == true) {
+      await openAppSettings();
+    }
   }
 
   Future<void> _showAiPreviewSheet(CanvasAiPreviewResult result) async {
