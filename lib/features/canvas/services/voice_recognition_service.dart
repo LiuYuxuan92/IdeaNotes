@@ -51,7 +51,7 @@ class SpeechToTextVoiceRecognitionService implements VoiceRecognitionService {
   Future<String?> systemLocaleId() async {
     try {
       final locale = await speechToText.systemLocale();
-      return locale.localeId;
+      return locale?.localeId;
     } catch (_) {
       return null;
     }
