@@ -80,7 +80,7 @@ class SpeechToTextVoiceRecognitionService implements VoiceRecognitionService {
       localeId: localeId,
       onSoundLevelChange: null,
       listenOptions: stt.SpeechListenOptions(
-        cancelOnError: true,
+        cancelOnError: false,
         partialResults: partialResults,
       ),
     );
