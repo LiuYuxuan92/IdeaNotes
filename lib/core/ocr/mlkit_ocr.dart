@@ -51,7 +51,7 @@ class MlKitOcr implements OcrEngine {
       tempDir = await Directory.systemTemp.createTemp('ideanotes_mlkit_ocr_');
       final tempFile = File('${tempDir.path}/canvas.png');
       await tempFile.writeAsBytes(imageBytes, flush: true);
-      return recognizeTextFromFile(tempFile.path);
+      return await recognizeTextFromFile(tempFile.path);
     } catch (e, stackTrace) {
       debugPrint('ML Kit OCR bytes error: $e');
       debugPrintStack(stackTrace: stackTrace);
