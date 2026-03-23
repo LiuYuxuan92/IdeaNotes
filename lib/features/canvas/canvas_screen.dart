@@ -11,6 +11,7 @@ import 'package:image/image.dart' as img;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../app/design_system.dart';
+import '../../core/extraction/deepseek_ocr_text_correction_engine.dart';
 import '../../core/extraction/extraction_models.dart';
 import '../../core/extraction/deepseek_text_understanding_engine.dart';
 import '../../core/models/note.dart';
@@ -196,7 +197,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
               if (_ocrResult.trim().isNotEmpty || _isPreviewingAi)
                 IconButton(
                   onPressed: _isPreviewingAi ? null : _previewAiExtraction,
-                  tooltip: 'AI整理预览',
+                  tooltip: 'AI校对并整理',
                   icon: _isPreviewingAi
                       ? const SizedBox(
                           width: 18,
@@ -433,6 +434,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       final previewService = widget.aiPreviewServiceOverride ??
           CanvasAiPreviewService(
             engine: const DeepSeekTextUnderstandingEngine(),
+            correctionEngine: const DeepSeekOcrTextCorrectionEngine(),
           );
       result = await previewService.preview(
         existingNote: _existingNote,
@@ -443,11 +445,29 @@ class _CanvasScreenState extends State<CanvasScreen> {
       result = CanvasAiPreviewResult.failure(
         engineName: 'deepseek',
         message: 'AI 预览失败，请稍后再试：$error',
+        originalText: recognizedText,
+        correctedText: recognizedText,
       );
     }
 
     if (!mounted) {
       return;
+    }
+
+    final correctionApplied = result.correctionApplied;
+    if (correctionApplied) {
+      setState(() {
+        _ocrResult = result.correctedText;
+        _ocrBannerState = OcrBannerState.success;
+        _ocrHelperText = 'AI 已先校对 OCR 文本，再继续整理。请确认后保存。';
+        _hasUnsavedChanges = true;
+        _isResultPanelExpanded = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('AI 已校对识别文本，当前展示的是校对后的结果。'),
+        ),
+      );
     }
 
     setState(() => _isPreviewingAi = false);
@@ -686,7 +706,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                                 ),
                               )
                             : const Icon(Icons.auto_awesome_rounded),
-                        label: const Text('AI整理预览'),
+                        label: const Text('AI校对+整理'),
                       ),
                     ),
                   ],
@@ -1261,6 +1281,7 @@ class _AiPreviewSheet extends StatelessWidget {
     final entries = document?.entries ?? const <ExtractedEntry>[];
     final warnings = document?.warnings ?? const <ExtractionWarning>[];
     final unparsedSegments = document?.unparsedSegments ?? const <String>[];
+    final correctionApplied = result.correctionApplied;
 
     return AppSurface(
       radius: context.isCompact ? 28 : 32,
@@ -1269,13 +1290,21 @@ class _AiPreviewSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AppSectionHeader(
-            eyebrow: 'AI整理预览',
-            title: result.success ? '这是保存前的 AI 整理结果' : '这次 AI 预览没有成功',
+            eyebrow: 'AI校对与整理',
+            title: result.success
+                ? (correctionApplied ? 'AI 已先校对文本，再给出整理结果' : '这是保存前的 AI 整理结果')
+                : '这次 AI 预览没有成功',
             description: result.success
-                ? '这里先给你看模型当前理解的条目；真正保存时，系统会把 AI 结果和规则解析合并后再写入。'
+                ? correctionApplied
+                    ? '当前 OCR 文本已经按 AI 校对结果写回编辑区；这里展示的是基于校对文本生成的整理结果。'
+                    : '这里先给你看模型当前理解的条目；真正保存时，系统会把 AI 结果和规则解析合并后再写入。'
                 : (result.errorMessage ?? 'AI 没有返回可用结果。你仍然可以继续编辑或直接保存 OCR 文本。'),
           ),
           const SizedBox(height: 16),
+          if (correctionApplied) ...[
+            _AiCorrectionPreviewCard(result: result),
+            const SizedBox(height: 16),
+          ],
           Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -1291,6 +1320,12 @@ class _AiPreviewSheet extends StatelessWidget {
                 label: '${entries.length} 条结构化结果',
                 accent: result.success ? AppColors.success : AppColors.warning,
               ),
+              if (correctionApplied)
+                const _AiPreviewMetaChip(
+                  icon: Icons.spellcheck_rounded,
+                  label: '已校对 OCR 文本',
+                  accent: AppColors.success,
+                ),
               _AiPreviewMetaChip(
                 icon: Icons.schedule_rounded,
                 label: '${result.latency.inMilliseconds} ms',
@@ -1360,6 +1395,101 @@ class _AiPreviewSheet extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiCorrectionPreviewCard extends StatelessWidget {
+  final CanvasAiPreviewResult result;
+
+  const _AiCorrectionPreviewCard({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FBF8),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFD7E9DD)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'AI 文本校对',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '下面是 AI 校对前后的文本。保存时会以校对后的版本为准。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _AiCorrectionBlock(
+            label: '原始 OCR',
+            text: result.originalText,
+            backgroundColor: Colors.white,
+          ),
+          const SizedBox(height: 10),
+          _AiCorrectionBlock(
+            label: 'AI 校对后',
+            text: result.correctedText,
+            backgroundColor: const Color(0xFFF1F7F3),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiCorrectionBlock extends StatelessWidget {
+  final String label;
+  final String text;
+  final Color backgroundColor;
+
+  const _AiCorrectionBlock({
+    required this.label,
+    required this.text,
+    required this.backgroundColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: AppColors.textMuted,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 6),
+          SelectableText(
+            text,
+            style: theme.textTheme.bodyMedium?.copyWith(height: 1.6),
           ),
         ],
       ),

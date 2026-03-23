@@ -239,7 +239,7 @@ void main() {
       expect(subjects.first['subject_name'], '宝宝');
       expect(
         tags.map((row) => row['tag']).toSet(),
-        {'健康', '宝宝', '疫苗'},
+        {'记录', '健康', '宝宝', '疫苗'},
       );
     });
 
@@ -314,6 +314,55 @@ void main() {
       expect(structuredEntries.first['domain'], 'health');
       expect(structuredEntries.first['category_l1'], '健康');
       expect(structuredEntries.first['category_l2'], '排便');
+
+      final tags = await db.query(
+        'entry_tags',
+        where: 'entry_id = ?',
+        whereArgs: [structuredEntries.first['id']],
+      );
+      expect(
+        tags.map((row) => row['tag']).toSet(),
+        {'记录', '健康', '排便'},
+      );
+    });
+
+    test('饮食记录会同时保留健康与记录标签', () async {
+      final service = CanvasSaveService(
+        databaseHelper: DatabaseHelper.instance,
+        createId: () => 'note-diet-1',
+      );
+
+      await service.save(
+        CanvasSaveInput(
+          existingNote: null,
+          canvasData: Uint8List.fromList([21, 22, 23]),
+          snapshotBytes: null,
+          thumbnailBytes: null,
+          recognizedText: '今天吃了牛肉',
+          now: DateTime(2026, 3, 20, 12, 0),
+        ),
+      );
+
+      final db = await DatabaseHelper.instance.database;
+      final structuredEntries = await db.query(
+        'entries',
+        where: 'note_id = ?',
+        whereArgs: ['note-diet-1'],
+      );
+
+      expect(structuredEntries.length, 1);
+      expect(structuredEntries.first['entry_type'], 'health_record');
+      expect(structuredEntries.first['domain'], 'health');
+
+      final tags = await db.query(
+        'entry_tags',
+        where: 'entry_id = ?',
+        whereArgs: [structuredEntries.first['id']],
+      );
+      expect(
+        tags.map((row) => row['tag']).toSet(),
+        {'记录', '健康', '饮食'},
+      );
     });
 
     test('识别文本为空时会清空旧 entries 且不新增', () async {

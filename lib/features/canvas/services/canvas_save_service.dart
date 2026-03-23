@@ -296,6 +296,7 @@ class CanvasSaveService {
       category: category,
       subjects: _entrySubjects(entry.rawText),
       tags: _entryTags(
+        entryType: classification.entryType,
         text: entry.rawText,
         domain: classification.domain,
         category: category,
@@ -343,6 +344,7 @@ class CanvasSaveService {
       category: category,
       subjects: _entrySubjects(entry.rawText),
       tags: _entryTags(
+        entryType: relatedType,
         text: entry.rawText,
         domain: 'health',
         category: category,
@@ -508,11 +510,15 @@ class CanvasSaveService {
   }
 
   List<String> _entryTags({
+    required ExtractionEntryType entryType,
     required String text,
     required String domain,
     required ExtractionCategory? category,
   }) {
     final tags = <String>{};
+    if (_isRecordLikeEntry(entryType)) {
+      tags.add('记录');
+    }
     if (domain == 'health') {
       tags.add('健康');
     }
@@ -535,6 +541,19 @@ class CanvasSaveService {
       tags.add(category.l2!.trim());
     }
     return tags.toList(growable: false);
+  }
+
+  bool _isRecordLikeEntry(ExtractionEntryType entryType) {
+    switch (entryType) {
+      case ExtractionEntryType.healthRecord:
+      case ExtractionEntryType.vaccination:
+      case ExtractionEntryType.medication:
+      case ExtractionEntryType.metric:
+      case ExtractionEntryType.memo:
+        return true;
+      default:
+        return false;
+    }
   }
 
   Map<String, dynamic> _normalizedPayload({

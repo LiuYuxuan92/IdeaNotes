@@ -479,7 +479,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
 
     final summaryText = _displayedEntryCount == 0
         ? '当前只保留 OCR 文本。识别更完整后，会继续归纳成花费、待办、健康、记录 4 类。'
-        : '本页共 $_displayedEntryCount 条结果，按 4 类聚合后更适合手机上快速扫一眼。';
+        : '本页共 $_displayedEntryCount 条结果；同一条可同时带多个标签，例如饮食会同时算健康和记录。';
 
     return AppSurface(
       padding: const EdgeInsets.all(16),
@@ -1365,7 +1365,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
 
     return [
       '当前共识别出 $_displayedEntryCount 条结构化线索',
-      '其中包含 $expenseCount 条花费、$eventCount 条待办、$healthCount 条健康、$memoCount 条记录',
+      '按标签维度看，包含 $expenseCount 条花费、$eventCount 条待办、$healthCount 条健康、$memoCount 条记录；同一条可以重复计入多个标签',
       _structuredEntries.isNotEmpty
           ? '这些结果已经进入结构化查询表，后面在查询页里会直接按这些条目继续筛选和统计'
           : '这些结果会和 OCR 文本一起保存，后面在查询页里可直接按分类或时间线继续看',
@@ -1429,6 +1429,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
       return _structuredEntries
           .where((entry) =>
               entry.domain == 'health' ||
+              entry.tags.contains('健康') ||
               const {
                 'health_record',
                 'vaccination',
@@ -1442,10 +1443,11 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
 
   int get _memoCount {
     if (_structuredEntries.isNotEmpty) {
-      return _structuredEntries.length -
-          _expenseCount -
-          _eventCount -
-          _healthCount;
+      return _structuredEntries
+          .where(
+            (entry) => entry.entryType == 'memo' || entry.tags.contains('记录'),
+          )
+          .length;
     }
     return _entries.where((entry) => entry.type == NoteEntryType.memo).length;
   }
@@ -1573,8 +1575,10 @@ class _StructuredEntryRow extends StatelessWidget {
       _entryTypeLabel(entry),
       if (_timeLabel != null) _timeLabel!,
       if (entry.categoryL1?.trim().isNotEmpty == true) entry.categoryL1!.trim(),
+      if (entry.categoryL2?.trim().isNotEmpty == true) entry.categoryL2!.trim(),
       if (_statusLabel != null) _statusLabel!,
     ];
+    final classificationTags = _classificationTags;
 
     return AppSurface(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1637,6 +1641,22 @@ class _StructuredEntryRow extends StatelessWidget {
                     color: AppColors.textSecondary,
                   ),
                 ),
+                if (classificationTags.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: classificationTags
+                        .map(
+                          (tag) => _InfoChip(
+                            icon: Icons.sell_outlined,
+                            label: tag,
+                            accent: _tagAccent(tag),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                ],
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 8,
@@ -1716,6 +1736,20 @@ class _StructuredEntryRow extends StatelessWidget {
       default:
         return entry.status;
     }
+  }
+
+  List<String> get _classificationTags {
+    final tags = <String>[];
+    for (final tag in entry.tags) {
+      final normalized = tag.trim();
+      if (normalized.isEmpty) {
+        continue;
+      }
+      if (!tags.contains(normalized)) {
+        tags.add(normalized);
+      }
+    }
+    return tags;
   }
 
   _EntryPalette get _palette {
@@ -1840,6 +1874,23 @@ class _StructuredEntryRow extends StatelessWidget {
       case 'rule-parser':
       default:
         return AppColors.inkBlue;
+    }
+  }
+
+  static Color _tagAccent(String tag) {
+    switch (tag) {
+      case '记录':
+        return AppColors.slateBlue;
+      case '健康':
+      case '饮食':
+      case '疫苗':
+      case '用药':
+      case '排便':
+        return AppColors.success;
+      case '宝宝':
+        return AppColors.inkBlue;
+      default:
+        return AppColors.textSecondary;
     }
   }
 }

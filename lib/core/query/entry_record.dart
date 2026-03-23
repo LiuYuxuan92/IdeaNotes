@@ -21,6 +21,7 @@ class EntryRecord {
   final bool isUserConfirmed;
   final String sourceEngine;
   final String? sourceVersion;
+  final List<String> tags;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -45,6 +46,7 @@ class EntryRecord {
     required this.isUserConfirmed,
     required this.sourceEngine,
     required this.sourceVersion,
+    this.tags = const [],
     required this.createdAt,
     required this.updatedAt,
   });
@@ -71,8 +73,45 @@ class EntryRecord {
       isUserConfirmed: _toInt(map['is_user_confirmed']) == 1,
       sourceEngine: map['source_engine'] as String,
       sourceVersion: map['source_version'] as String?,
+      tags: map['tags'] is List
+          ? (map['tags'] as List)
+              .whereType<Object>()
+              .map((item) => item.toString().trim())
+              .where((item) => item.isNotEmpty)
+              .toList(growable: false)
+          : const [],
       createdAt: DateTime.fromMillisecondsSinceEpoch(_toInt(map['created_at'])),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(_toInt(map['updated_at'])),
+    );
+  }
+
+  EntryRecord copyWith({
+    List<String>? tags,
+  }) {
+    return EntryRecord(
+      id: id,
+      noteId: noteId,
+      entryType: entryType,
+      domain: domain,
+      occurredAt: occurredAt,
+      occurredDate: occurredDate,
+      endAt: endAt,
+      title: title,
+      summary: summary,
+      rawText: rawText,
+      normalizedJson: normalizedJson,
+      amountValue: amountValue,
+      amountCurrency: amountCurrency,
+      categoryL1: categoryL1,
+      categoryL2: categoryL2,
+      status: status,
+      confidence: confidence,
+      isUserConfirmed: isUserConfirmed,
+      sourceEngine: sourceEngine,
+      sourceVersion: sourceVersion,
+      tags: tags ?? this.tags,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 

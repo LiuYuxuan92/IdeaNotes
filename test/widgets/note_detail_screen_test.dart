@@ -161,5 +161,80 @@ void main() {
       expect(find.text('识别文本'), findsOneWidget);
       expect(find.text('旧版解析结果'), findsNothing);
     });
+
+    testWidgets('结构化健康记录会展示记录与健康标签', (tester) async {
+      final now = DateTime(2026, 3, 21, 9, 30);
+      final note = Note(
+        id: 'note-health-tags',
+        notebookId: 'default-notebook',
+        createdAt: now,
+        updatedAt: now,
+        recognizedText: '今天吃了牛肉',
+      );
+
+      await DatabaseHelper.instance.insertNote({
+        'id': note.id,
+        'notebook_id': note.notebookId,
+        'created_at': now.millisecondsSinceEpoch,
+        'updated_at': now.millisecondsSinceEpoch,
+        'canvas_data': null,
+        'snapshot_image_path': null,
+        'thumbnail_image_path': null,
+        'recognized_text': note.recognizedText,
+      });
+
+      final db = await DatabaseHelper.instance.database;
+      await db.insert('entries', {
+        'id': 'entry-health-1',
+        'note_id': note.id,
+        'entry_type': 'health_record',
+        'domain': 'health',
+        'occurred_at': now.millisecondsSinceEpoch,
+        'occurred_date': '2026-03-21',
+        'end_at': null,
+        'title': '今天吃了牛肉',
+        'summary': '饮食记录',
+        'raw_text': '今天吃了牛肉',
+        'normalized_json': '{}',
+        'amount_value': null,
+        'amount_currency': null,
+        'category_l1': '健康',
+        'category_l2': '饮食',
+        'status': 'recorded',
+        'confidence': 0.9,
+        'is_user_confirmed': 0,
+        'source_engine': 'rule-parser',
+        'source_version': '1.0',
+        'created_at': now.millisecondsSinceEpoch,
+        'updated_at': now.millisecondsSinceEpoch,
+      });
+
+      await db.insert('entry_tags', {
+        'id': 'tag-1',
+        'entry_id': 'entry-health-1',
+        'tag': '记录',
+        'created_at': now.millisecondsSinceEpoch,
+      });
+      await db.insert('entry_tags', {
+        'id': 'tag-2',
+        'entry_id': 'entry-health-1',
+        'tag': '健康',
+        'created_at': now.millisecondsSinceEpoch,
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NoteDetailScreen(note: note),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('今天吃了牛肉'), findsWidgets);
+      expect(find.text('记录'), findsWidgets);
+      expect(find.text('健康'), findsWidgets);
+      expect(find.textContaining('1 条健康'), findsWidgets);
+      expect(find.textContaining('1 条记录'), findsWidgets);
+    });
   });
 }

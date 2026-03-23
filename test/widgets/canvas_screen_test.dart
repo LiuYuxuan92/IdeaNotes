@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idea_notes/core/extraction/extraction_models.dart';
+import 'package:idea_notes/core/extraction/ocr_text_correction_engine.dart';
 import 'package:idea_notes/core/extraction/text_understanding_engine.dart';
 import 'package:idea_notes/core/storage/database_migrations.dart';
 import 'package:idea_notes/features/canvas/canvas_screen.dart';
@@ -64,6 +65,27 @@ class _FakeTextUnderstandingEngine implements TextUnderstandingEngine {
 
   @override
   Future<bool> isAvailable() async => true;
+}
+
+class _FakeOcrTextCorrectionEngine implements OcrTextCorrectionEngine {
+  final OcrTextCorrectionResult result;
+
+  const _FakeOcrTextCorrectionEngine({
+    required this.result,
+  });
+
+  @override
+  String get engineName => 'fake-correction';
+
+  @override
+  Future<bool> isAvailable() async => true;
+
+  @override
+  Future<OcrTextCorrectionResult> correctText(
+    OcrTextCorrectionRequest request,
+  ) async {
+    return result;
+  }
 }
 
 Future<void> _setUpInMemoryDatabase() async {
@@ -268,7 +290,7 @@ void main() {
     testWidgets('可打开 AI 整理预览并看到结构化条目', (tester) async {
       await _setLargeSurface(tester);
       addTearDown(() => _resetSurface(tester));
-      await _insertNote(id: 'note-ai-preview', recognizedText: '明天早上去药店');
+      await _insertNote(id: 'note-ai-preview', recognizedText: '今天吃了3牛肉');
 
       final aiPreviewService = CanvasAiPreviewService(
         engine: _FakeTextUnderstandingEngine(
@@ -277,16 +299,24 @@ void main() {
               'entries': [
                 {
                   'entry_id': 'ai-entry-1',
-                  'entry_type': 'task',
-                  'domain': 'life',
-                  'title': '去药店',
-                  'summary': '明天早上去药店办事',
-                  'raw_text': '明天早上去药店',
+                  'entry_type': 'health_record',
+                  'domain': 'health',
+                  'title': '今天吃了牛肉',
+                  'summary': '饮食记录',
+                  'raw_text': '今天吃了牛肉',
                   'occurred_date': '2026-03-22',
                 },
               ],
             }),
             latency: const Duration(milliseconds: 80),
+            modelName: 'deepseek-preview',
+          ),
+        ),
+        correctionEngine: const _FakeOcrTextCorrectionEngine(
+          result: OcrTextCorrectionResult.success(
+            correctedText: '今天吃了牛肉',
+            rawResponse: '{"corrected_text":"今天吃了牛肉"}',
+            latency: Duration(milliseconds: 20),
             modelName: 'deepseek-preview',
           ),
         ),
@@ -302,14 +332,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('AI整理预览'), findsOneWidget);
+      expect(find.text('AI校对+整理'), findsOneWidget);
 
-      await tester.tap(find.text('AI整理预览'));
+      await tester.tap(find.text('AI校对+整理'));
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('这是保存前的 AI 整理结果'), findsOneWidget);
-      expect(find.text('去药店'), findsOneWidget);
+      expect(find.text('AI 已先校对文本，再给出整理结果'), findsOneWidget);
+      expect(find.text('今天吃了牛肉'), findsWidgets);
+      expect(find.text('AI 文本校对'), findsOneWidget);
       expect(find.textContaining('fake-ai · deepseek-preview'), findsOneWidget);
     });
   });

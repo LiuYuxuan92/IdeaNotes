@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:idea_notes/core/extraction/extraction_models.dart';
 import 'package:idea_notes/core/query/entry_query.dart';
 import 'package:idea_notes/core/query/entry_record.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
 import 'database_helper.dart';
@@ -37,7 +38,8 @@ class EntryRepository {
     });
   }
 
-  Future<AiExtractionAuditSnapshot?> getLatestAiExtraction(String noteId) async {
+  Future<AiExtractionAuditSnapshot?> getLatestAiExtraction(
+      String noteId) async {
     final db = await databaseHelper.database;
     final rows = await db.query(
       'ai_extractions',
@@ -176,7 +178,23 @@ class EntryRepository {
       whereArgs: [noteId],
       orderBy: 'occurred_date DESC, created_at DESC',
     );
-    return rows.map(EntryRecord.fromMap).toList(growable: false);
+    final entries = rows.map(EntryRecord.fromMap).toList(growable: false);
+    if (entries.isEmpty) {
+      return entries;
+    }
+
+    final tagsByEntryId = await _loadTagsForEntryIds(
+      db,
+      entries.map((entry) => entry.id).toList(growable: false),
+    );
+
+    return entries
+        .map(
+          (entry) => entry.copyWith(
+            tags: tagsByEntryId[entry.id] ?? const <String>[],
+          ),
+        )
+        .toList(growable: false);
   }
 
   Future<List<EntryRecord>> queryEntriesByDate(
@@ -349,6 +367,37 @@ class EntryRepository {
     return deduped.toList(growable: false);
   }
 
+  Future<Map<String, List<String>>> _loadTagsForEntryIds(
+    Database db,
+    List<String> entryIds,
+  ) async {
+    if (entryIds.isEmpty) {
+      return const <String, List<String>>{};
+    }
+
+    final rows = await db.query(
+      'entry_tags',
+      columns: ['entry_id', 'tag'],
+      where: _inClause('entry_id', entryIds.length),
+      whereArgs: entryIds,
+      orderBy: 'created_at ASC',
+    );
+
+    final tagsByEntryId = <String, List<String>>{};
+    for (final row in rows) {
+      final entryId = row['entry_id']?.toString();
+      final tag = row['tag']?.toString().trim();
+      if (entryId == null || entryId.isEmpty || tag == null || tag.isEmpty) {
+        continue;
+      }
+      final tags = tagsByEntryId.putIfAbsent(entryId, () => <String>[]);
+      if (!tags.contains(tag)) {
+        tags.add(tag);
+      }
+    }
+    return tagsByEntryId;
+  }
+
   static String? _trimToNull(String? value) {
     final trimmed = value?.trim();
     if (trimmed == null || trimmed.isEmpty) {
@@ -394,8 +443,7 @@ class AiExtractionAuditSnapshot {
       rawResponseJson: map['raw_response_json'] as String,
       normalizedEntriesJson: map['normalized_entries_json'] as String,
       status: map['status'] as String,
-      createdAt:
-          DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
+      createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
     );
   }
 }
