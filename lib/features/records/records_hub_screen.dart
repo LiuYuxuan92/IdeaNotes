@@ -360,7 +360,7 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
     if (data.totalCount == 0) {
       return const EmptyStateView(
         icon: Icons.event_note_rounded,
-        title: '这段时间还没有可回看的事项',
+        title: '这段时间还没有可回看的待办',
         description: '把提醒、安排或时间点写进笔记并保存后，这里会按日期整理时间线。',
       );
     }
@@ -371,7 +371,7 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
         _MetricGrid(
           items: [
             _MetricItem(
-              label: '全部事项',
+              label: '全部待办',
               value: '${data.totalCount} 条',
               icon: Icons.list_alt_rounded,
               accent: AppColors.inkBlue,
@@ -397,8 +397,8 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
             children: [
               const AppSectionHeader(
                 eyebrow: '时间线',
-                title: '按日期回看事项',
-                description: '这里收录被识别为事项的内容，例如未来安排、提醒词和明确时点。',
+                title: '按日期回看待办',
+                description: '这里收录被识别为待办的内容，例如未来安排、提醒词和明确时点。',
               ),
               const SizedBox(height: 16),
               ...data.groups.map(
@@ -450,8 +450,8 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
             children: [
               const AppSectionHeader(
                 eyebrow: '记录',
-                title: '按日期回看健康事项',
-                description: '疫苗、用药、就诊、排便和相关健康事项都会按天归档。',
+                title: '按日期回看健康记录',
+                description: '疫苗、用药、就诊、排便、饮食和相关健康待办都会按天归档。',
               ),
               const SizedBox(height: 16),
               ...data.groups.map(
@@ -497,7 +497,7 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
       case 'expense':
         return '花费';
       case 'task':
-        return '事项';
+        return '待办';
       case 'vaccination':
         return '疫苗';
       case 'medication':
@@ -505,7 +505,7 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
       case 'health_record':
         return '健康记录';
       case 'memo':
-        return '备忘';
+        return '记录';
       default:
         return entryType;
     }
@@ -513,14 +513,14 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
 
   static String _healthEntryTypeLabel(String entryType) {
     if (entryType == 'task') {
-      return '健康事项';
+      return '健康待办';
     }
     return _entryTypeLabel(entryType);
   }
 
   static String _timelineEntryLabel(EntryRecord entry) {
     if (entry.entryType == 'task' && entry.domain == 'health') {
-      return '健康事项';
+      return '健康待办';
     }
     return _entryTypeLabel(entry.entryType);
   }
@@ -575,7 +575,7 @@ extension on RecordsHubTab {
       case RecordsHubTab.finance:
         return '支出分类';
       case RecordsHubTab.tasks:
-        return '事项时间线';
+        return '待办时间线';
       case RecordsHubTab.health:
         return '健康记录';
     }
@@ -586,7 +586,7 @@ extension on RecordsHubTab {
       case RecordsHubTab.finance:
         return '支出分类查询';
       case RecordsHubTab.tasks:
-        return '事项时间线查询';
+        return '待办时间线查询';
       case RecordsHubTab.health:
         return '健康记录查询';
     }
@@ -597,9 +597,9 @@ extension on RecordsHubTab {
       case RecordsHubTab.finance:
         return '查近一段时间的花费总额、分类占比和按月回看。';
       case RecordsHubTab.tasks:
-        return '收录被识别为事项的内容：未来安排、提醒词和明确时点。';
+        return '收录被识别为待办的内容：未来安排、提醒词和明确时点。';
       case RecordsHubTab.health:
-        return '收录健康相关内容：疫苗、用药、就诊、排便等，也包含健康事项。';
+        return '收录健康相关内容：疫苗、用药、就诊、排便、饮食等，也包含健康待办。';
     }
   }
 }

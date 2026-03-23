@@ -549,7 +549,7 @@ class _InsightRow extends StatelessWidget {
     if (eventCount > 0) {
       chips.add(
         _StatChip(
-          label: '$eventCount 事项',
+          label: '$eventCount 待办',
           icon: Icons.event_note_rounded,
           color: const Color(0xFF6E7BC7),
         ),
@@ -567,7 +567,7 @@ class _InsightRow extends StatelessWidget {
     if (memoCount > 0) {
       chips.add(
         _StatChip(
-          label: '$memoCount 备忘',
+          label: '$memoCount 记录',
           icon: Icons.sticky_note_2_outlined,
           color: AppColors.success,
         ),

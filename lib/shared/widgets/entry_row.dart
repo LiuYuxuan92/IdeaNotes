@@ -91,7 +91,7 @@ class EntryRow extends StatelessWidget {
       case NoteEntryType.event:
         return entry.event?.title.isNotEmpty == true
             ? entry.event!.title
-            : '待办事项';
+            : '待办';
       case NoteEntryType.health:
         return entry.memoText?.trim().isNotEmpty == true
             ? entry.memoText!.trim()
@@ -99,7 +99,7 @@ class EntryRow extends StatelessWidget {
       case NoteEntryType.memo:
         return entry.memoText?.trim().isNotEmpty == true
             ? entry.memoText!.trim()
-            : '备忘内容';
+            : '记录内容';
     }
   }
 
@@ -113,8 +113,7 @@ class EntryRow extends StatelessWidget {
         final event = entry.event;
         if (event == null) return null;
         if (event.date != null) {
-          final hasClockTime =
-              event.date!.hour != 0 || event.date!.minute != 0;
+          final hasClockTime = event.date!.hour != 0 || event.date!.minute != 0;
           final dateLabel = hasClockTime
               ? '${event.date!.month}月${event.date!.day}日 ${event.date!.hour.toString().padLeft(2, '0')}:${event.date!.minute.toString().padLeft(2, '0')}'
               : '${event.date!.month}月${event.date!.day}日';
@@ -128,12 +127,15 @@ class EntryRow extends StatelessWidget {
         if (EntryTextRules.hasMedicationKeyword(entry.rawText)) {
           return '健康记录 · 用药';
         }
+        if (EntryTextRules.hasDietRecordKeyword(entry.rawText)) {
+          return '健康记录 · 饮食';
+        }
         if (EntryTextRules.hasDigestiveKeyword(entry.rawText)) {
           return '健康记录 · 排便';
         }
         return '健康记录';
       case NoteEntryType.memo:
-        return '备忘';
+        return '记录';
     }
   }
 

@@ -1485,7 +1485,7 @@ class _AiPreviewEntryCard extends StatelessWidget {
       case ExtractionEntryType.purchase:
         return '消费';
       case ExtractionEntryType.task:
-        return entry.domain == 'health' ? '健康事项' : '事项';
+        return entry.domain == 'health' ? '健康待办' : '待办';
       case ExtractionEntryType.appointment:
         return '预约';
       case ExtractionEntryType.vaccination:
@@ -1501,7 +1501,7 @@ class _AiPreviewEntryCard extends StatelessWidget {
       case ExtractionEntryType.document:
         return '资料';
       case ExtractionEntryType.memo:
-        return '备忘';
+        return '记录';
       case ExtractionEntryType.custom:
         return '自定义';
     }

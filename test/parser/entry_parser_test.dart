@@ -71,8 +71,8 @@ void main() {
     });
   });
 
-  group('EntryParser - 事项解析测试', () {
-    test('解析 明天去医院 - 识别为事项', () {
+  group('EntryParser - 待办解析测试', () {
+    test('解析 明天去医院 - 识别为待办', () {
       final entry = EntryParser.parse('明天去医院');
 
       expect(entry.type, equals(NoteEntryType.event));
@@ -87,7 +87,7 @@ void main() {
       expect(entry.event!.date!.day, equals(tomorrow.day));
     });
 
-    test('解析 下周三开会 - 识别为事项', () {
+    test('解析 下周三开会 - 识别为待办', () {
       final entry = EntryParser.parse('下周三开会');
 
       expect(entry.type, equals(NoteEntryType.event));
@@ -96,7 +96,7 @@ void main() {
       expect(entry.event!.date, isNotNull);
     });
 
-    test('解析 后天去旅行 - 识别为事项', () {
+    test('解析 后天去旅行 - 识别为待办', () {
       final entry = EntryParser.parse('后天去旅行');
 
       expect(entry.type, equals(NoteEntryType.event));
@@ -110,7 +110,7 @@ void main() {
       expect(entry.event!.date!.day, equals(dayAfterTomorrow.day));
     });
 
-    test('解析 大后天考试 - 识别为事项', () {
+    test('解析 大后天考试 - 识别为待办', () {
       final entry = EntryParser.parse('大后天考试');
 
       expect(entry.type, equals(NoteEntryType.event));
@@ -122,7 +122,7 @@ void main() {
       expect(entry.event!.date!.day, equals(dayAfter3Days.day));
     });
 
-    test('解析 下周五看电影 - 识别为事项', () {
+    test('解析 下周五看电影 - 识别为待办', () {
       final entry = EntryParser.parse('下周五看电影');
 
       expect(entry.type, equals(NoteEntryType.event));
@@ -130,7 +130,7 @@ void main() {
       expect(entry.event!.date, isNotNull);
     });
 
-    test('解析 下周去开会 - 识别为事项（无具体星期）', () {
+    test('解析 下周去开会 - 识别为待办（无具体星期）', () {
       final entry = EntryParser.parse('下周去开会');
 
       expect(entry.type, equals(NoteEntryType.event));
@@ -138,7 +138,7 @@ void main() {
       expect(entry.event!.date, isNotNull);
     });
 
-    test('解析 记得买牛奶 - 任务关键词识别为事项', () {
+    test('解析 记得买牛奶 - 任务关键词识别为待办', () {
       final entry = EntryParser.parse('记得买牛奶');
 
       expect(entry.type, equals(NoteEntryType.event));
@@ -146,7 +146,7 @@ void main() {
       expect(entry.event!.title, equals('买牛奶'));
     });
 
-    test('解析 别忘了交电费 - 任务关键词识别为事项', () {
+    test('解析 别忘了交电费 - 任务关键词识别为待办', () {
       final entry = EntryParser.parse('别忘了交电费');
 
       expect(entry.type, equals(NoteEntryType.event));
@@ -154,21 +154,21 @@ void main() {
       expect(entry.event!.title, equals('交电费'));
     });
 
-    test('解析 需要买菜 - 任务关键词但无金额识别为事项', () {
+    test('解析 需要买菜 - 任务关键词但无金额识别为待办', () {
       final entry = EntryParser.parse('需要买菜');
 
       expect(entry.type, equals(NoteEntryType.event));
       expect(entry.event, isNotNull);
     });
 
-    test('解析 提醒我开会 - 任务关键词识别为事项', () {
+    test('解析 提醒我开会 - 任务关键词识别为待办', () {
       final entry = EntryParser.parse('提醒我开会');
 
       expect(entry.type, equals(NoteEntryType.event));
       expect(entry.event, isNotNull);
     });
 
-    test('解析 不要忘交作业 - 任务关键词识别为事项', () {
+    test('解析 不要忘交作业 - 任务关键词识别为待办', () {
       final entry = EntryParser.parse('不要忘交作业');
 
       expect(entry.type, equals(NoteEntryType.event));
@@ -178,11 +178,11 @@ void main() {
     test('解析 费用要100元 - 含金额不触发单字要', () {
       final entry = EntryParser.parse('费用要100元');
 
-      // 有金额，应识别为花费而非事项
+      // 有金额，应识别为花费而非待办
       expect(entry.type, equals(NoteEntryType.expense));
     });
 
-    test('解析 周三开会 - 本周周三识别为事项', () {
+    test('解析 周三开会 - 本周周三识别为待办', () {
       final entry = EntryParser.parse('周三开会');
 
       expect(entry.type, equals(NoteEntryType.event));
@@ -191,7 +191,7 @@ void main() {
       expect(entry.event!.date!.weekday, equals(3)); // 3 = 周三
     });
 
-    test('解析 周五聚餐 - 本周周五识别为事项', () {
+    test('解析 周五聚餐 - 本周周五识别为待办', () {
       final entry = EntryParser.parse('周五聚餐');
 
       expect(entry.type, equals(NoteEntryType.event));
@@ -215,29 +215,29 @@ void main() {
     });
   });
 
-  group('EntryParser - 备忘解析测试', () {
-    test('解析 天气很好 - 识别为备忘', () {
+  group('EntryParser - 记录解析测试', () {
+    test('解析 天气很好 - 识别为记录', () {
       final entry = EntryParser.parse('天气很好');
 
       expect(entry.type, equals(NoteEntryType.memo));
       expect(entry.memoText, equals('天气很好'));
     });
 
-    test('解析 一些普通文字 - 识别为备忘', () {
+    test('解析 一些普通文字 - 识别为记录', () {
       final entry = EntryParser.parse('今天心情不错');
 
       expect(entry.type, equals(NoteEntryType.memo));
       expect(entry.memoText, equals('今天心情不错'));
     });
 
-    test('解析 无内容 - 识别为空备忘', () {
+    test('解析 无内容 - 识别为空记录', () {
       final entry = EntryParser.parse('');
 
       expect(entry.type, equals(NoteEntryType.memo));
       expect(entry.rawText, equals(''));
     });
 
-    test('解析 纯空格 - 识别为空备忘', () {
+    test('解析 纯空格 - 识别为空记录', () {
       final entry = EntryParser.parse('   ');
 
       expect(entry.type, equals(NoteEntryType.memo));
@@ -253,7 +253,7 @@ void main() {
       expect(entry.expense!.amount, equals(Decimal.parse('7200')));
     });
 
-    test('解析 明天5点拉屎 - 识别为事项并保留时点', () {
+    test('解析 明天5点拉屎 - 识别为待办并保留时点', () {
       final entry = EntryParser.parse('明天5点拉屎');
 
       expect(entry.type, equals(NoteEntryType.event));
@@ -264,7 +264,7 @@ void main() {
       expect(entry.event!.date!.minute, equals(0));
     });
 
-    test('解析 明天早上去药店 - 识别为事项', () {
+    test('解析 明天早上去药店 - 识别为待办', () {
       final entry = EntryParser.parse('明天早上去药店');
 
       expect(entry.type, equals(NoteEntryType.event));
@@ -285,10 +285,38 @@ void main() {
       expect(entry.type, equals(NoteEntryType.health));
       expect(entry.memoText, equals('宝宝打了疫苗'));
     });
+
+    test('解析 今天吃了牛肉 - 识别为健康记录（饮食）', () {
+      final entry = EntryParser.parse('今天吃了牛肉');
+
+      expect(entry.type, equals(NoteEntryType.health));
+      expect(entry.memoText, equals('吃了牛肉'));
+    });
+
+    test('解析 早餐牛奶鸡蛋 - 识别为健康记录（饮食）', () {
+      final entry = EntryParser.parse('早餐牛奶鸡蛋');
+
+      expect(entry.type, equals(NoteEntryType.health));
+      expect(entry.memoText, equals('早餐牛奶鸡蛋'));
+    });
+
+    test('解析 买了早餐 - 保持为普通记录', () {
+      final entry = EntryParser.parse('买了早餐');
+
+      expect(entry.type, equals(NoteEntryType.memo));
+      expect(entry.memoText, equals('买了早餐'));
+    });
+
+    test('解析 买奶粉 - 保持为普通记录', () {
+      final entry = EntryParser.parse('买奶粉');
+
+      expect(entry.type, equals(NoteEntryType.memo));
+      expect(entry.memoText, equals('买奶粉'));
+    });
   });
 
   group('EntryParser - 多行解析测试', () {
-    test('解析多行文本 - 包含花费、事项、备忘', () {
+    test('解析多行文本 - 包含花费、待办、记录', () {
       const text = '''买菜 35.5
 明天去医院
 天气很好''';
@@ -302,11 +330,11 @@ void main() {
       expect(entries[0].expense!.amount, equals(Decimal.parse('35.5')));
       expect(entries[0].expense!.category, equals('餐饮'));
 
-      // 第二行：事项
+      // 第二行：待办
       expect(entries[1].type, equals(NoteEntryType.event));
       expect(entries[1].event!.title, equals('去医院'));
 
-      // 第三行：备忘
+      // 第三行：记录
       expect(entries[2].type, equals(NoteEntryType.memo));
       expect(entries[2].memoText, equals('天气很好'));
     });
@@ -346,13 +374,13 @@ void main() {
   });
 
   group('EntryParser - 空行跳过测试', () {
-    test('空行应创建空备忘', () {
+    test('空行应创建空记录', () {
       final entry = EntryParser.parse('');
 
       expect(entry.type, equals(NoteEntryType.memo));
     });
 
-    test('纯空格应创建空备忘', () {
+    test('纯空格应创建空记录', () {
       final entry = EntryParser.parse('  ');
 
       expect(entry.type, equals(NoteEntryType.memo));

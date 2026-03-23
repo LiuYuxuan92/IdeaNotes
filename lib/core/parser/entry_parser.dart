@@ -20,7 +20,7 @@ class EntryParser {
       return expenseEntry;
     }
 
-    // 尝试解析为事项
+    // 尝试解析为待办
     final eventEntry = _tryParseEvent(text);
     if (eventEntry != null) {
       return eventEntry;
@@ -32,7 +32,7 @@ class EntryParser {
       return healthEntry;
     }
 
-    // 默认为备忘
+    // 默认为记录
     return _createEntry(NoteEntryType.memo, text, memoText: text);
   }
 
@@ -71,7 +71,7 @@ class EntryParser {
   /// 任务关键词（明确的多字关键词）
   static final _clearTaskKeywords = ['记得', '需要', '别忘了', '不要忘', '别忘', '提醒'];
 
-  /// 尝试解析为事项
+  /// 尝试解析为待办
   static NoteEntry? _tryParseEvent(String text) {
     final temporal = _parseTemporalInfo(text);
 
@@ -85,16 +85,14 @@ class EntryParser {
 
     final hasFutureCue = EntryTextRules.hasFutureRelativeCue(text) ||
         (temporal.date != null && _isAfterDay(temporal.date!, temporal.today));
-    final hasSameDayScheduleCue =
-        (EntryTextRules.hasTodayCue(text) ||
-                EntryTextRules.hasTimeOfDayCue(text) ||
-                temporal.hasExplicitTime) &&
-            EntryTextRules.hasActionKeyword(text) &&
-            !EntryTextRules.hasCompletionCue(text);
-    final hasStandaloneExplicitTime =
-        temporal.hasExplicitTime &&
-            (EntryTextRules.hasActionKeyword(text) || hasTaskKeyword) &&
-            !EntryTextRules.hasCompletionCue(text);
+    final hasSameDayScheduleCue = (EntryTextRules.hasTodayCue(text) ||
+            EntryTextRules.hasTimeOfDayCue(text) ||
+            temporal.hasExplicitTime) &&
+        EntryTextRules.hasActionKeyword(text) &&
+        !EntryTextRules.hasCompletionCue(text);
+    final hasStandaloneExplicitTime = temporal.hasExplicitTime &&
+        (EntryTextRules.hasActionKeyword(text) || hasTaskKeyword) &&
+        !EntryTextRules.hasCompletionCue(text);
 
     if (hasTaskKeyword ||
         hasFutureCue ||
@@ -117,7 +115,7 @@ class EntryParser {
 
   /// 尝试解析为健康记录
   static NoteEntry? _tryParseHealth(String text) {
-    if (!EntryTextRules.hasHealthKeyword(text)) {
+    if (!_looksLikeHealthRecord(text)) {
       return null;
     }
 
@@ -286,7 +284,8 @@ class EntryParser {
         .replaceAll(RegExp(r'\d+月\d+日'), '')
         .replaceAll(RegExp(r'\d+/\d+'), '')
         .replaceAll(RegExp(r'(?<!\d)\d{1,2}[:：]\d{1,2}(?!\d)'), '')
-        .replaceAll(RegExp(r'(?<!\d)\d{1,2}\s*(?:点|时)(?:半|\d{1,2}分?)?(?!\d)'), '')
+        .replaceAll(
+            RegExp(r'(?<!\d)\d{1,2}\s*(?:点|时)(?:半|\d{1,2}分?)?(?!\d)'), '')
         .replaceAll(RegExp(r'凌晨|早上|上午|中午|下午|傍晚|晚上'), '')
         .replaceAll(RegExp(r'记得|需要|别忘了|不要忘|别忘|提醒'), '')
         .replaceAll(RegExp(r'(^|[，。！？、])要'), r'\1')
@@ -300,6 +299,18 @@ class EntryParser {
         .replaceAll(RegExp(r'凌晨|早上|上午|中午|下午|傍晚|晚上|今晚'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+  }
+
+  static bool _looksLikeHealthRecord(String text) {
+    if (EntryTextRules.hasHealthKeyword(text)) {
+      return true;
+    }
+
+    if (EntryTextRules.hasDietRecordKeyword(text)) {
+      return true;
+    }
+
+    return false;
   }
 
   static bool _isAfterDay(DateTime value, DateTime today) {
@@ -327,11 +338,12 @@ class EntryParser {
 
   /// 解析多行文本
   static List<NoteEntry> parseMultiLine(String text) {
-    final lines = text.split('\n')
+    final lines = text
+        .split('\n')
         .map((l) => l.trim())
         .where((l) => l.isNotEmpty)
         .toList();
-    
+
     return lines.map((line) => parse(line)).toList();
   }
 }

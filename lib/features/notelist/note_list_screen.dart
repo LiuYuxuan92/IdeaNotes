@@ -243,9 +243,9 @@ class _NoteListScreenState extends State<NoteListScreen> {
       return '你现在正在按关键词筛选，列表里只保留和搜索词相关的笔记。';
     }
     if (state.notes.isEmpty) {
-      return '先写一页，再识别，再把花费、事项和健康记录沉淀成可查询的数据。';
+      return '先写一页，再识别，再把花费、待办和健康记录沉淀成可查询的数据。';
     }
-    return '上面是操作入口，下面是最近笔记。支出分类、事项时间线、健康记录都可以直接点进去看。';
+    return '上面是操作入口，下面是最近笔记。支出分类、待办时间线、健康记录都可以直接点进去看。';
   }
 
   Widget _buildPrimaryActions(BuildContext context) {
@@ -315,15 +315,15 @@ class _NoteListScreenState extends State<NoteListScreen> {
         onTap: () => _openRecordsHub(RecordsHubTab.finance),
       ),
       _RecordsShortcutSpec(
-        title: '事项时间线',
-        description: '按日期回看被识别为事项的内容，例如提醒、安排和明确时点。',
+        title: '待办时间线',
+        description: '按日期回看被识别为待办的内容，例如提醒、安排和明确时点。',
         icon: Icons.event_note_rounded,
         accent: AppColors.inkBlue,
         onTap: () => _openRecordsHub(RecordsHubTab.tasks),
       ),
       _RecordsShortcutSpec(
         title: '健康记录',
-        description: '查疫苗、用药、就诊、排便和相关健康事项的时间线。',
+        description: '查疫苗、用药、就诊、排便、饮食和相关健康待办的时间线。',
         icon: Icons.vaccines_rounded,
         accent: AppColors.success,
         onTap: () => _openRecordsHub(RecordsHubTab.health),

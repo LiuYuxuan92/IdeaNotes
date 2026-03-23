@@ -38,6 +38,10 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
   List<EntryRecord> _structuredEntries = const [];
   AiExtractionAuditSnapshot? _latestAiExtraction;
   bool _isLoading = true;
+  bool _isRecognizedExpanded = false;
+  bool _showAllPhoneEntries = false;
+  bool _isAiExpanded = false;
+  bool _isCanvasExpanded = false;
 
   @override
   void initState() {
@@ -97,7 +101,13 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
       }
     }
     if (mounted) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _isRecognizedExpanded = false;
+        _showAllPhoneEntries = false;
+        _isAiExpanded = false;
+        _isCanvasExpanded = false;
+      });
     }
   }
 
@@ -184,6 +194,10 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
   }
 
   Widget _buildCompactLayout(BuildContext context) {
+    if (context.isCompact) {
+      return _buildPhoneLayout(context);
+    }
+
     final sections = <Widget>[
       _buildHeaderCard(context),
       const SizedBox(height: 18),
@@ -227,6 +241,642 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
         children: sections,
       ),
     );
+  }
+
+  Widget _buildPhoneLayout(BuildContext context) {
+    final sections = <Widget>[
+      _buildPhoneOverviewCard(context),
+      const SizedBox(height: 12),
+      KeyedSubtree(
+        key: _recognizedSectionKey,
+        child: _buildPhoneRecognizedCard(context),
+      ),
+      const SizedBox(height: 12),
+      KeyedSubtree(
+        key: _summarySectionKey,
+        child: _buildPhoneSummaryCard(context),
+      ),
+      const SizedBox(height: 12),
+      KeyedSubtree(
+        key: _entriesSectionKey,
+        child: _buildPhoneEntriesCard(context),
+      ),
+      const SizedBox(height: 12),
+      KeyedSubtree(
+        key: _aiSectionKey,
+        child: _buildPhoneAiCard(context),
+      ),
+    ];
+
+    if (_hasSnapshot) {
+      sections.addAll([
+        const SizedBox(height: 12),
+        KeyedSubtree(
+          key: _canvasSectionKey,
+          child: _buildPhoneCanvasCard(context),
+        ),
+      ]);
+    }
+
+    return SingleChildScrollView(
+      controller: _scrollController,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: sections,
+      ),
+    );
+  }
+
+  Widget _buildPhoneOverviewCard(BuildContext context) {
+    final previewLine = _recognizedText.isEmpty
+        ? '先回到手写页做一次识别，再回来核对结果。'
+        : _recognizedText.split('\n').first.trim();
+    final statusColor =
+        _recognizedText.isEmpty ? AppColors.warning : AppColors.success;
+    final statusLabel = _recognizedText.isEmpty ? '待识别' : '已识别';
+
+    return AppSurface(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '笔记详情',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: AppColors.textMuted,
+                            letterSpacing: 1.2,
+                          ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      previewLine,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            height: 1.3,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: statusColor,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _metaPill(
+                context,
+                Icons.schedule_rounded,
+                _timeText(_currentNote.updatedAt),
+              ),
+              _metaPill(
+                context,
+                Icons.checklist_rounded,
+                _recognizedText.isEmpty ? '0 条结果' : '$_displayedEntryCount 条结果',
+              ),
+              if (_hasAiStructuredData)
+                _metaPill(
+                  context,
+                  Icons.auto_awesome_rounded,
+                  'AI已整理',
+                ),
+              if (_hasSnapshot)
+                _metaPill(
+                  context,
+                  Icons.draw_rounded,
+                  '有手写原稿',
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _openCanvasEditor,
+                  icon: const Icon(Icons.edit_note_rounded),
+                  label: Text(_recognizedText.isEmpty ? '去识别' : '继续编辑'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _recognizedText.isEmpty ? null : _shareNote,
+                  icon: const Icon(Icons.ios_share_rounded),
+                  label: const Text('分享文本'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhoneRecognizedCard(BuildContext context) {
+    final canExpand =
+        _recognizedText.length > 140 || _recognizedText.split('\n').length > 5;
+
+    return AppSurface(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildCompactSectionHeader(
+            context,
+            icon: Icons.text_snippet_outlined,
+            title: '识别文本',
+            subtitle:
+                _recognizedText.isEmpty ? '还没有识别结果' : '默认只展示前几行，避免手机上一整块铺满',
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFB),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+            child: _recognizedText.isEmpty
+                ? Text(
+                    '这页目前还是原始手写内容。回到画布后点一下“识别”，系统会把文本整理到这里。',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppColors.textSecondary,
+                          height: 1.55,
+                        ),
+                  )
+                : _isRecognizedExpanded
+                    ? SelectableText(
+                        _recognizedText,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              height: 1.6,
+                            ),
+                      )
+                    : Text(
+                        _recognizedText,
+                        maxLines: 5,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              height: 1.6,
+                            ),
+                      ),
+          ),
+          if (canExpand) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () {
+                setState(() {
+                  _isRecognizedExpanded = !_isRecognizedExpanded;
+                });
+              },
+              icon: Icon(
+                _isRecognizedExpanded
+                    ? Icons.unfold_less_rounded
+                    : Icons.unfold_more_rounded,
+              ),
+              label: Text(_isRecognizedExpanded ? '收起全文' : '展开全文'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhoneSummaryCard(BuildContext context) {
+    final expenseCount = _expenseCount;
+    final eventCount = _eventCount;
+    final healthCount = _healthCount;
+    final memoCount = _memoCount;
+
+    final summaryText = _displayedEntryCount == 0
+        ? '当前只保留 OCR 文本。识别更完整后，会继续归纳成花费、待办、健康、记录 4 类。'
+        : '本页共 $_displayedEntryCount 条结果，按 4 类聚合后更适合手机上快速扫一眼。';
+
+    return AppSurface(
+      padding: const EdgeInsets.all(16),
+      backgroundColor: const Color(0xFFF8FAFB),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildCompactSectionHeader(
+            context,
+            icon: Icons.insights_outlined,
+            title: '结构化概览',
+            subtitle: summaryText,
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _summaryChip(
+                context,
+                icon: Icons.attach_money_rounded,
+                label: '$expenseCount 条花费',
+                accent: AppColors.warning,
+              ),
+              _summaryChip(
+                context,
+                icon: Icons.event_note_rounded,
+                label: '$eventCount 条待办',
+                accent: AppColors.inkBlue,
+              ),
+              _summaryChip(
+                context,
+                icon: Icons.health_and_safety_outlined,
+                label: '$healthCount 条健康',
+                accent: AppColors.success,
+              ),
+              _summaryChip(
+                context,
+                icon: Icons.sticky_note_2_outlined,
+                label: '$memoCount 条记录',
+                accent: AppColors.slateBlue,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhoneEntriesCard(BuildContext context) {
+    final allEntryWidgets = _buildDisplayedEntryWidgets();
+    final hasMoreEntries = allEntryWidgets.length > 4;
+    final visibleEntryWidgets = hasMoreEntries && !_showAllPhoneEntries
+        ? allEntryWidgets.take(4).toList(growable: false)
+        : allEntryWidgets;
+
+    return AppSurface(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildCompactSectionHeader(
+            context,
+            icon: Icons.checklist_rounded,
+            title: '解析结果',
+            subtitle: _displayedEntryCount == 0
+                ? '暂时没有可展示的解析条目'
+                : '默认先看前 4 条，避免详情页在手机上拉得过长',
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: _displayedEntryCount == 0
+                    ? const Color(0xFFF3E8D0)
+                    : const Color(0xFFDDEEE6),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '$_displayedEntryCount 条',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: _displayedEntryCount == 0
+                          ? AppColors.warning
+                          : AppColors.success,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_displayedEntryCount == 0)
+            const EmptyStateView(
+              icon: Icons.layers_clear_outlined,
+              title: '暂时没有解析结果',
+              description: '这不影响保存和查看。等文本更完整后，再识别一次会更容易提取结构。',
+            )
+          else ...[
+            ...visibleEntryWidgets,
+            if (hasMoreEntries) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _showAllPhoneEntries = !_showAllPhoneEntries;
+                  });
+                },
+                icon: Icon(
+                  _showAllPhoneEntries
+                      ? Icons.unfold_less_rounded
+                      : Icons.unfold_more_rounded,
+                ),
+                label: Text(
+                  _showAllPhoneEntries
+                      ? '收起多余条目'
+                      : '展开剩余 ${allEntryWidgets.length - 4} 条',
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhoneAiCard(BuildContext context) {
+    final audit = _latestAiExtraction;
+    final aiCount = _structuredEntries
+        .where((entry) => entry.sourceEngine != 'rule-parser')
+        .length;
+    final hasAiResult = audit != null || aiCount > 0;
+    final statusLabel = audit == null
+        ? '待生成'
+        : audit.status == 'success'
+            ? '已完成'
+            : '失败';
+    final statusColor = audit == null
+        ? AppColors.warning
+        : audit.status == 'success'
+            ? AppColors.success
+            : AppColors.error;
+
+    return _buildCompactExpandableCard(
+      context,
+      icon: Icons.auto_awesome_rounded,
+      title: 'AI整理',
+      subtitle: _recognizedText.isEmpty
+          ? '先识别出文本，AI 才能继续整理'
+          : hasAiResult
+              ? '已有整理结果，默认折叠，避免详情页继续拉长'
+              : '当前还没有 AI 整理记录',
+      accent: AppColors.aiAccent,
+      expanded: _isAiExpanded,
+      onToggle: () {
+        setState(() {
+          _isAiExpanded = !_isAiExpanded;
+        });
+      },
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: statusColor.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          statusLabel,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: statusColor,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+      ),
+      backgroundColor:
+          _recognizedText.isEmpty ? Colors.white : AppColors.aiAccentSoft,
+      border: BorderSide(
+        color: _recognizedText.isEmpty
+            ? Theme.of(context).colorScheme.outlineVariant
+            : AppColors.aiAccent.withValues(alpha: 0.18),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _summaryChip(
+                context,
+                icon: Icons.auto_awesome_rounded,
+                label: audit == null
+                    ? '未记录模型'
+                    : '${audit.engineName} · ${audit.engineModel}',
+                accent: AppColors.aiAccent,
+              ),
+              _summaryChip(
+                context,
+                icon: Icons.fact_check_outlined,
+                label: '$aiCount 条 AI 结果',
+                accent: AppColors.success,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ..._aiBullets().map(
+            (bullet) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                bullet,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppColors.textSecondary,
+                      height: 1.5,
+                    ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhoneCanvasCard(BuildContext context) {
+    return _buildCompactExpandableCard(
+      context,
+      icon: Icons.draw_rounded,
+      title: '手写原稿',
+      subtitle: _isCanvasExpanded ? '可直接核对字迹和布局' : '默认折叠，避免原稿预览在手机上占太高',
+      expanded: _isCanvasExpanded,
+      onToggle: () {
+        setState(() {
+          _isCanvasExpanded = !_isCanvasExpanded;
+        });
+      },
+      trailing: IconButton(
+        onPressed: _openCanvasEditor,
+        tooltip: '继续编辑',
+        icon: const Icon(Icons.edit_note_rounded),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            height: 200,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F5F1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+            child: _snapshotBytes == null
+                ? Center(
+                    child: Text(
+                      '当前没有可显示的画布快照。',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                    ),
+                  )
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: InteractiveViewer(
+                      minScale: 1,
+                      maxScale: 4,
+                      child: Image.memory(
+                        _snapshotBytes!,
+                        fit: BoxFit.contain,
+                        width: double.infinity,
+                      ),
+                    ),
+                  ),
+          ),
+          const SizedBox(height: 10),
+          TextButton.icon(
+            onPressed: _openCanvasEditor,
+            icon: const Icon(Icons.edit_note_rounded),
+            label: const Text('继续编辑手写页'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactSectionHeader(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    Widget? trailing,
+    Color accent = AppColors.textSecondary,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 18, color: accent),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                      height: 1.45,
+                    ),
+              ),
+            ],
+          ),
+        ),
+        if (trailing != null) ...[
+          const SizedBox(width: 8),
+          trailing,
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCompactExpandableCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool expanded,
+    required VoidCallback onToggle,
+    required Widget body,
+    Widget? trailing,
+    Color accent = AppColors.textSecondary,
+    Color? backgroundColor,
+    BorderSide? border,
+  }) {
+    return AppSurface(
+      padding: const EdgeInsets.all(16),
+      backgroundColor: backgroundColor,
+      border: border,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(18),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _buildCompactSectionHeader(
+                      context,
+                      icon: icon,
+                      title: title,
+                      subtitle: subtitle,
+                      accent: accent,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (trailing != null) trailing,
+                  Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: AppColors.textSecondary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (expanded) ...[
+            const SizedBox(height: 12),
+            body,
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildDisplayedEntryWidgets() {
+    if (_structuredEntries.isNotEmpty) {
+      return _structuredEntries
+          .map((entry) => _StructuredEntryRow(entry: entry))
+          .toList(growable: false);
+    }
+    return _entries
+        .map((entry) => EntryRow(entry: entry))
+        .toList(growable: false);
   }
 
   Widget _buildHeaderCard(BuildContext context) {
@@ -576,7 +1226,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     final bullets = _displayedEntryCount == 0
         ? const [
             '当前页已保留手写原稿与 OCR 文本',
-            '识别更完整后，这里会统计本页的花费、事项、健康和备忘',
+            '识别更完整后，这里会统计本页的花费、待办、健康和记录',
             '这些结构化结果会直接进入后续查询页继续使用',
           ]
         : _entrySummaryBullets();
@@ -591,7 +1241,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
             title:
                 _displayedEntryCount == 0 ? '这页还没有提取出结构化条目' : '这页已经提取出可复用的信息',
             description: _recognizedText.isEmpty
-                ? '先识别出文本后，系统才能继续拆出花费、事项、健康和备忘。'
+                ? '先识别出文本后，系统才能继续拆出花费、待办、健康和记录。'
                 : _structuredEntries.isNotEmpty
                     ? '这里展示的是结构化 entries 表里的结果，优先反映 AI 与规则合并后的最终落库内容。'
                     : '当前还在展示兼容旧版本的解析结果；重新保存后会切换成新的结构化结果。',
@@ -628,7 +1278,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
               _summaryChip(
                 context,
                 icon: Icons.event_note_rounded,
-                label: '$eventCount 条事项',
+                label: '$eventCount 条待办',
                 accent: AppColors.inkBlue,
               ),
               _summaryChip(
@@ -640,7 +1290,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
               _summaryChip(
                 context,
                 icon: Icons.sticky_note_2_outlined,
-                label: '$memoCount 条备忘',
+                label: '$memoCount 条记录',
                 accent: AppColors.slateBlue,
               ),
             ],
@@ -715,7 +1365,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
 
     return [
       '当前共识别出 $_displayedEntryCount 条结构化线索',
-      '其中包含 $expenseCount 条花费、$eventCount 条事项、$healthCount 条健康、$memoCount 条备忘',
+      '其中包含 $expenseCount 条花费、$eventCount 条待办、$healthCount 条健康、$memoCount 条记录',
       _structuredEntries.isNotEmpty
           ? '这些结果已经进入结构化查询表，后面在查询页里会直接按这些条目继续筛选和统计'
           : '这些结果会和 OCR 文本一起保存，后面在查询页里可直接按分类或时间线继续看',
@@ -1136,7 +1786,7 @@ class _StructuredEntryRow extends StatelessWidget {
 
   static String _entryTypeLabel(EntryRecord entry) {
     if (entry.entryType == 'task' && entry.domain == 'health') {
-      return '健康事项';
+      return '健康待办';
     }
 
     switch (entry.entryType) {
@@ -1147,7 +1797,7 @@ class _StructuredEntryRow extends StatelessWidget {
       case 'purchase':
         return '消费';
       case 'task':
-        return '事项';
+        return '待办';
       case 'appointment':
         return '预约';
       case 'vaccination':
@@ -1163,7 +1813,7 @@ class _StructuredEntryRow extends StatelessWidget {
       case 'document':
         return '资料';
       case 'memo':
-        return '备忘';
+        return '记录';
       default:
         return entry.entryType;
     }

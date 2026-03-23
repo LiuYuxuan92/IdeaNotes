@@ -135,7 +135,7 @@ class _SearchScreenState extends State<SearchScreen> {
           const AppSectionHeader(
             eyebrow: '全局搜索',
             title: '输入关键词搜索笔记',
-            description: '找原文内容时用关键词；按支出、事项、健康查时，直接走下面的结构化入口。',
+            description: '找原文内容时用关键词；按支出、待办、健康查时，直接走下面的结构化入口。',
           ),
           const SizedBox(height: 16),
           TextField(
@@ -210,8 +210,8 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
       _JumpCard(
         icon: Icons.event_note_rounded,
-        title: '事项时间线',
-        subtitle: '按日期回看事项',
+        title: '待办时间线',
+        subtitle: '按日期回看待办',
         accent: AppColors.inkBlue,
         onTap: () => _openRecordsHub(RecordsHubTab.tasks),
       ),
@@ -302,7 +302,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '试试换一个关键词，或者改走支出分类、事项时间线、健康记录入口继续查。',
+                    '试试换一个关键词，或者改走支出分类、待办时间线、健康记录入口继续查。',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: AppColors.textSecondary,
                         ),

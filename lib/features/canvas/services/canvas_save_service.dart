@@ -336,7 +336,7 @@ class CanvasSaveService {
       entryType: relatedType,
       domain: 'health',
       title: title,
-      summary: '从花费记录派生的健康事项',
+      summary: '从花费记录派生的健康记录',
       rawText: entry.rawText,
       occurredDate: relatedDate,
       status: 'recorded',
@@ -447,7 +447,8 @@ class CanvasSaveService {
         return category;
       }
     }
-    if (entry.type == NoteEntryType.memo || entry.type == NoteEntryType.health) {
+    if (entry.type == NoteEntryType.memo ||
+        entry.type == NoteEntryType.health) {
       final memoText = entry.memoText?.trim();
       if (memoText != null &&
           memoText.isNotEmpty &&
@@ -479,6 +480,9 @@ class CanvasSaveService {
     }
     if (EntryTextRules.hasMedicationKeyword(text)) {
       return const ExtractionCategory(l1: '医疗', l2: '用药');
+    }
+    if (EntryTextRules.hasDietRecordKeyword(text)) {
+      return const ExtractionCategory(l1: '健康', l2: '饮食');
     }
     if (EntryTextRules.hasDigestiveKeyword(text)) {
       return const ExtractionCategory(l1: '健康', l2: '排便');
@@ -520,6 +524,9 @@ class CanvasSaveService {
     }
     if (EntryTextRules.hasMedicationKeyword(text)) {
       tags.add('用药');
+    }
+    if (EntryTextRules.hasDietRecordKeyword(text)) {
+      tags.add('饮食');
     }
     if (EntryTextRules.hasDigestiveKeyword(text)) {
       tags.add('排便');

@@ -13,6 +13,18 @@ class EntryTextRules {
   static final RegExp medicationKeywordPattern = RegExp(
     r'吃药|用药|药片|药丸|退烧药|感冒药|拿药|取药|开药',
   );
+  static final RegExp dietActionKeywordPattern = RegExp(
+    r'吃了|喝了|进食|喂奶|喂了|母乳喂养|喝奶|吃奶|喝奶粉|奶粉喂养|加辅食|吃辅食|断奶',
+  );
+  static final RegExp mealKeywordPattern = RegExp(
+    r'早餐|早饭|午餐|午饭|晚餐|晚饭|加餐|宵夜|辅食',
+  );
+  static final RegExp leadingMealKeywordPattern = RegExp(
+    r'^\s*(早餐|早饭|午餐|午饭|晚餐|晚饭|加餐|宵夜|辅食)',
+  );
+  static final RegExp purchaseIntentKeywordPattern = RegExp(
+    r'买了?|点了?|订了?|叫了?|外卖',
+  );
   static final RegExp digestiveKeywordPattern = RegExp(
     r'拉屎|便便|大便|排便|腹泻|拉肚子|便秘|拉臭臭',
   );
@@ -52,10 +64,22 @@ class EntryTextRules {
   static bool hasMedicationKeyword(String text) =>
       medicationKeywordPattern.hasMatch(text);
 
+  static bool hasDietActionKeyword(String text) =>
+      dietActionKeywordPattern.hasMatch(text);
+
+  static bool hasMealKeyword(String text) => mealKeywordPattern.hasMatch(text);
+
+  static bool startsWithMealKeyword(String text) =>
+      leadingMealKeywordPattern.hasMatch(text);
+
+  static bool hasPurchaseIntentKeyword(String text) =>
+      purchaseIntentKeywordPattern.hasMatch(text);
+
   static bool hasDigestiveKeyword(String text) =>
       digestiveKeywordPattern.hasMatch(text);
 
-  static bool hasHealthKeyword(String text) => healthKeywordPattern.hasMatch(text);
+  static bool hasHealthKeyword(String text) =>
+      healthKeywordPattern.hasMatch(text);
 
   static bool hasBabyKeyword(String text) => babyKeywordPattern.hasMatch(text);
 
@@ -70,7 +94,8 @@ class EntryTextRules {
   static bool hasReminderKeyword(String text) =>
       reminderKeywordPattern.hasMatch(text);
 
-  static bool hasActionKeyword(String text) => actionKeywordPattern.hasMatch(text);
+  static bool hasActionKeyword(String text) =>
+      actionKeywordPattern.hasMatch(text);
 
   static bool hasFutureRelativeCue(String text) =>
       futureRelativePattern.hasMatch(text);
@@ -81,12 +106,28 @@ class EntryTextRules {
 
   static bool hasTimeOfDayCue(String text) => timeOfDayPattern.hasMatch(text);
 
-  static bool hasCompletionCue(String text) =>
-      completionPattern.hasMatch(text);
+  static bool hasCompletionCue(String text) => completionPattern.hasMatch(text);
+
+  static bool hasDietRecordKeyword(String text) {
+    final hasDirectDietCue = hasDietActionKeyword(text);
+    final hasMealCue = hasMealKeyword(text);
+    final hasRecordCue =
+        hasTodayCue(text) || hasPastCue(text) || hasCompletionCue(text);
+
+    if (hasDirectDietCue) {
+      return true;
+    }
+
+    if (hasMealCue && hasPurchaseIntentKeyword(text)) {
+      return false;
+    }
+
+    return hasMealCue && (hasRecordCue || startsWithMealKeyword(text));
+  }
 
   static ParsedClockTime? extractClockTime(String text) {
-    final colonMatch = RegExp(r'(?<!\d)(\d{1,2})[:：](\d{1,2})(?!\d)')
-        .firstMatch(text);
+    final colonMatch =
+        RegExp(r'(?<!\d)(\d{1,2})[:：](\d{1,2})(?!\d)').firstMatch(text);
     if (colonMatch != null) {
       final hour = int.parse(colonMatch.group(1)!);
       final minute = int.parse(colonMatch.group(2)!);
