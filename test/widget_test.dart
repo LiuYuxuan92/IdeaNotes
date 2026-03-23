@@ -12,32 +12,8 @@ import 'package:idea_notes/app/app.dart';
 
 void main() {
   testWidgets('IdeaNotes app smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
     await tester.pumpWidget(const IdeaNotesApp());
-
-    // Verify that the app renders without crashing.
     expect(find.byType(MaterialApp), findsOneWidget);
-
-    // Verify basic UI elements are present (adjust based on your app's actual UI)
-    // expect(find.text('IdeaNotes'), findsAny);
-  });
-
-  testWidgets('Counter increments', (WidgetTester tester) async {
-    // This is a placeholder test demonstrating Flutter test structure.
-    // Replace with actual widget tests for your application.
-
-    // Example: Test a simple widget
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Text('IdeaNotes'),
-          ),
-        ),
-      ),
-    );
-
-    // Verify the text is displayed
-    expect(find.text('IdeaNotes'), findsOneWidget);
+    expect(find.textContaining('IdeaNotes'), findsAny);
   });
 }

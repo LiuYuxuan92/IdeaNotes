@@ -217,14 +217,15 @@ class _VoiceCaptureSheetState extends State<VoiceCaptureSheet> {
                 : _isListening
                     ? '正在把你说的话变成可搜索文本'
                     : '编辑一下再写入到笔记',
-            description: _error != null
-                ? _error!
-                : '建议一条条说，金额直接说数字，日期词可以说“今天/明天/下周三”。',
+            description:
+                _error != null ? _error! : '建议一条条说，金额直接说数字，日期词可以说“今天/明天/下周三”。',
             trailing: _StatusPill(
               label: _isListening ? '识别中' : _status,
               accent: _error != null
                   ? AppColors.error
-                  : (_isListening ? AppColors.aiAccent : AppColors.textSecondary),
+                  : (_isListening
+                      ? AppColors.aiAccent
+                      : AppColors.textSecondary),
             ),
           ),
           const SizedBox(height: 14),
@@ -235,7 +236,8 @@ class _VoiceCaptureSheetState extends State<VoiceCaptureSheet> {
               _ModeChip(
                 selected: _writeMode == VoiceCaptureWriteMode.append,
                 label: '追加',
-                onTap: () => setState(() => _writeMode = VoiceCaptureWriteMode.append),
+                onTap: () =>
+                    setState(() => _writeMode = VoiceCaptureWriteMode.append),
               ),
               _ModeChip(
                 selected: _writeMode == VoiceCaptureWriteMode.replace,
@@ -282,12 +284,12 @@ class _VoiceCaptureSheetState extends State<VoiceCaptureSheet> {
           ),
           const SizedBox(height: 14),
           if (_error != null)
-            _HintLine(
+            const _HintLine(
               icon: Icons.info_outline_rounded,
               text: '可以先检查麦克风权限、系统语音服务是否可用，再重试。',
             )
           else
-            _HintLine(
+            const _HintLine(
               icon: Icons.lock_outline_rounded,
               text: '语音识别由系统服务完成，可能需要联网。',
             ),
@@ -304,15 +306,20 @@ class _VoiceCaptureSheetState extends State<VoiceCaptureSheet> {
               if (!_isInitializing)
                 OutlinedButton.icon(
                   onPressed: _isListening ? _stopListening : _startListening,
-                  icon: Icon(_isListening ? Icons.mic_off_rounded : Icons.mic_rounded),
+                  icon: Icon(
+                      _isListening ? Icons.mic_off_rounded : Icons.mic_rounded),
                   label: Text(_isListening ? '停止识别' : '继续识别'),
                 ),
               FilledButton.icon(
-                onPressed: _isInitializing || _isListening || _controller.text.trim().isEmpty
+                onPressed: _isInitializing ||
+                        _isListening ||
+                        _controller.text.trim().isEmpty
                     ? null
                     : _applyAndClose,
                 icon: const Icon(Icons.subdirectory_arrow_left_rounded),
-                label: Text(_writeMode == VoiceCaptureWriteMode.append ? '追加到笔记' : '覆盖写入'),
+                label: Text(_writeMode == VoiceCaptureWriteMode.append
+                    ? '追加到笔记'
+                    : '覆盖写入'),
               ),
             ],
           ),
@@ -374,7 +381,8 @@ class _ModeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = selected ? AppColors.inkBlue : AppColors.textSecondary;
-    final background = selected ? const Color(0xFFDDE8EE) : const Color(0xFFF2F5F6);
+    final background =
+        selected ? const Color(0xFFDDE8EE) : const Color(0xFFF2F5F6);
 
     return InkWell(
       onTap: onTap,
@@ -456,4 +464,3 @@ class _HintLine extends StatelessWidget {
     );
   }
 }
-

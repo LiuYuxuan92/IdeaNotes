@@ -11,6 +11,7 @@ import '../../core/query/entry_record.dart';
 import '../../core/storage/database_helper.dart';
 import '../../core/storage/entry_repository.dart';
 import '../../core/storage/image_storage.dart';
+import '../canvas/canvas_screen.dart';
 import '../../shared/widgets/entry_row.dart';
 
 class NoteDetailScreen extends StatefulWidget {
@@ -30,6 +31,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
   final GlobalKey _summarySectionKey = GlobalKey();
   final GlobalKey _entriesSectionKey = GlobalKey();
   late final EntryRepository _entryRepository;
+  late Note _currentNote;
   Uint8List? _snapshotBytes;
   late String _recognizedText;
   List<NoteEntry> _entries = const [];
@@ -41,7 +43,8 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
   void initState() {
     super.initState();
     _entryRepository = EntryRepository(databaseHelper: DatabaseHelper.instance);
-    _recognizedText = widget.note.recognizedText?.trim() ?? '';
+    _currentNote = widget.note;
+    _recognizedText = _currentNote.recognizedText?.trim() ?? '';
     _loadNoteDetail();
   }
 
@@ -53,21 +56,32 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
 
   Future<void> _loadNoteDetail() async {
     setState(() => _isLoading = true);
-    if (widget.note.snapshotImagePath != null) {
+    _entries = const [];
+    _structuredEntries = const [];
+    _latestAiExtraction = null;
+    _snapshotBytes = null;
+
+    final latestNote = await DatabaseHelper.instance.getNote(_currentNote.id);
+    if (latestNote != null) {
+      _currentNote = Note.fromMap(latestNote);
+    }
+    _recognizedText = _currentNote.recognizedText?.trim() ?? '';
+
+    if (_currentNote.snapshotImagePath != null) {
       _snapshotBytes =
-          await ImageStorage.loadSnapshot(widget.note.snapshotImagePath!);
+          await ImageStorage.loadSnapshot(_currentNote.snapshotImagePath!);
     }
 
     if (_recognizedText.isNotEmpty) {
       _structuredEntries =
-          await _entryRepository.queryEntriesForNote(widget.note.id);
+          await _entryRepository.queryEntriesForNote(_currentNote.id);
       _latestAiExtraction =
-          await _entryRepository.getLatestAiExtraction(widget.note.id);
+          await _entryRepository.getLatestAiExtraction(_currentNote.id);
 
       try {
         if (_structuredEntries.isEmpty) {
           final entryMaps =
-              await DatabaseHelper.instance.getNoteEntries(widget.note.id);
+              await DatabaseHelper.instance.getNoteEntries(_currentNote.id);
           if (entryMaps.isNotEmpty) {
             _entries = entryMaps.map(NoteEntry.fromMap).toList();
           } else {
@@ -94,7 +108,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_formattedDate(widget.note.createdAt)),
+        title: Text(_formattedDate(_currentNote.createdAt)),
         actions: [
           IconButton(
             onPressed: _recognizedText.isEmpty ? null : _shareNote,
@@ -170,40 +184,47 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
   }
 
   Widget _buildCompactLayout(BuildContext context) {
+    final sections = <Widget>[
+      _buildHeaderCard(context),
+      const SizedBox(height: 18),
+      KeyedSubtree(
+        key: _recognizedSectionKey,
+        child: _buildRecognizedCard(context),
+      ),
+      const SizedBox(height: 18),
+      _buildSectionNavigator(context),
+      const SizedBox(height: 18),
+      KeyedSubtree(
+        key: _summarySectionKey,
+        child: _buildStructuredSummaryCard(context),
+      ),
+      const SizedBox(height: 18),
+      KeyedSubtree(
+        key: _entriesSectionKey,
+        child: _buildEntriesCard(context),
+      ),
+      const SizedBox(height: 18),
+      KeyedSubtree(
+        key: _aiSectionKey,
+        child: _buildAiCard(context),
+      ),
+    ];
+
+    if (_hasSnapshot) {
+      sections.addAll([
+        const SizedBox(height: 18),
+        KeyedSubtree(
+          key: _canvasSectionKey,
+          child: _buildCanvasCard(context),
+        ),
+      ]);
+    }
+
     return SingleChildScrollView(
       controller: _scrollController,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildHeaderCard(context),
-          const SizedBox(height: 18),
-          _buildSectionNavigator(context),
-          const SizedBox(height: 18),
-          KeyedSubtree(
-            key: _canvasSectionKey,
-            child: _buildCanvasCard(context),
-          ),
-          const SizedBox(height: 18),
-          KeyedSubtree(
-            key: _recognizedSectionKey,
-            child: _buildRecognizedCard(context),
-          ),
-          const SizedBox(height: 18),
-          KeyedSubtree(
-            key: _aiSectionKey,
-            child: _buildAiCard(context),
-          ),
-          const SizedBox(height: 18),
-          KeyedSubtree(
-            key: _summarySectionKey,
-            child: _buildStructuredSummaryCard(context),
-          ),
-          const SizedBox(height: 18),
-          KeyedSubtree(
-            key: _entriesSectionKey,
-            child: _buildEntriesCard(context),
-          ),
-        ],
+        children: sections,
       ),
     );
   }
@@ -230,7 +251,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
         _metaPill(
           context,
           Icons.schedule_rounded,
-          '更新于 ${_timeText(widget.note.updatedAt)}',
+          '更新于 ${_timeText(_currentNote.updatedAt)}',
         ),
         _metaPill(
           context,
@@ -277,11 +298,6 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
         runSpacing: 8,
         children: [
           _SectionJumpChip(
-            icon: Icons.draw_rounded,
-            label: '手写原稿',
-            onTap: () => _scrollToSection(_canvasSectionKey),
-          ),
-          _SectionJumpChip(
             icon: Icons.notes_rounded,
             label: 'OCR 文本',
             onTap: () => _scrollToSection(_recognizedSectionKey),
@@ -303,6 +319,12 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
             accent: AppColors.inkBlue,
             onTap: () => _scrollToSection(_entriesSectionKey),
           ),
+          if (_hasSnapshot)
+            _SectionJumpChip(
+              icon: Icons.draw_rounded,
+              label: '手写原稿',
+              onTap: () => _scrollToSection(_canvasSectionKey),
+            ),
         ],
       ),
     );
@@ -311,7 +333,9 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
   Widget _buildCanvasCard(BuildContext context, {bool isPinned = false}) {
     final preview = Container(
       width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 240),
+      constraints: BoxConstraints(
+        minHeight: isPinned ? 240 : (_hasSnapshot ? 160 : 112),
+      ),
       decoration: BoxDecoration(
         color: const Color(0xFFF7F5F1),
         borderRadius: BorderRadius.circular(24),
@@ -372,10 +396,20 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
             description: _recognizedText.isEmpty
                 ? '如果这页需要搜索、复制或分享，请回到画布触发一次识别。'
                 : '如果发现错字或漏字，建议先回到画布补充书写，再重新识别一次。',
-            trailing: IconButton(
-              onPressed: _recognizedText.isEmpty ? null : _shareNote,
-              tooltip: '分享识别文本',
-              icon: const Icon(Icons.ios_share_rounded),
+            trailing: Wrap(
+              spacing: 4,
+              children: [
+                IconButton(
+                  onPressed: _openCanvasEditor,
+                  tooltip: '继续编辑',
+                  icon: const Icon(Icons.edit_note_rounded),
+                ),
+                IconButton(
+                  onPressed: _recognizedText.isEmpty ? null : _shareNote,
+                  tooltip: '分享识别文本',
+                  icon: const Icon(Icons.ios_share_rounded),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
@@ -776,6 +810,19 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     if (_recognizedText.isEmpty) return;
     Share.share(_recognizedText, subject: 'IdeaNotes 笔记');
   }
+
+  Future<void> _openCanvasEditor() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => CanvasScreen(noteId: _currentNote.id),
+      ),
+    );
+    if (!mounted) return;
+    await _loadNoteDetail();
+  }
+
+  bool get _hasSnapshot => _snapshotBytes != null;
 
   Widget _summaryChip(
     BuildContext context, {

@@ -121,10 +121,8 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
       ));
     } else {
       final filtered = state.notes.where((note) {
-        // 搜索标题和识别文本
-        final title = note.id.toLowerCase();
-        final recognizedText = note.recognizedText?.toLowerCase() ?? '';
-        return title.contains(query) || recognizedText.contains(query);
+        final searchableText = note.searchableText.toLowerCase();
+        return searchableText.contains(query);
       }).toList();
 
       emit(state.copyWith(

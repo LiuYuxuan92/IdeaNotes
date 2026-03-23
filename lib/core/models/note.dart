@@ -86,4 +86,43 @@ class Note extends Equatable {
         recognizedText,
         entries,
       ];
+
+  List<String> get _recognizedLines {
+    final text = recognizedText?.trim();
+    if (text == null || text.isEmpty) {
+      return const <String>[];
+    }
+    return text
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  String get displayTitle {
+    final lines = _recognizedLines;
+    if (lines.isNotEmpty) {
+      return lines.first;
+    }
+    return '${createdAt.month}月${createdAt.day}日手写页';
+  }
+
+  String get displaySummary {
+    final lines = _recognizedLines;
+    if (lines.isEmpty) {
+      return '还没有识别内容，打开笔记后可继续书写或识别。';
+    }
+    return lines.take(3).join('\n');
+  }
+
+  String get searchableText {
+    final dateLabel =
+        '${createdAt.year}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}';
+    return [
+      displayTitle,
+      recognizedText ?? '',
+      dateLabel,
+      '${createdAt.month}月${createdAt.day}日',
+    ].join('\n');
+  }
 }

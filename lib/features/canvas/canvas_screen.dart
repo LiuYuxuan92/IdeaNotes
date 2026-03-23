@@ -72,6 +72,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   bool _isRecognizing = false;
   bool _isPreviewingAi = false;
   bool _isResultPanelExpanded = false;
+  bool _hasUnsavedChanges = false;
   Note? _existingNote;
   OcrEngine? _ocrEngine;
   OcrBannerState _ocrBannerState = OcrBannerState.idle;
@@ -126,6 +127,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     setState(() {
       _existingNote = note;
       _ocrResult = note.recognizedText ?? '';
+      _hasUnsavedChanges = false;
       if (_ocrResult.trim().isNotEmpty) {
         _ocrBannerState = OcrBannerState.success;
         _ocrHelperText = '这是上次识别并保存的文本。你可以继续补写，再重新识别更新结果。';
@@ -148,146 +150,140 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   @override
   Widget build(BuildContext context) {
-
     return BlocProvider.value(
       value: _canvasBloc,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(widget.noteId == null ? '新建手写笔记' : '继续编辑笔记'),
-          actions: [
-            IconButton(
-              onPressed: _toggleResultPanel,
-              tooltip: _isResultPanelExpanded ? '收起识别面板' : '展开识别面板',
-              icon: Icon(
-                context.isLarge
-                    ? Icons.view_sidebar_rounded
-                    : Icons.vertical_align_top_rounded,
-              ),
-            ),
-            IconButton(
-              onPressed: (_isSaving || _isRecognizing || _isPreviewingAi)
-                  ? null
-                  : _openVoiceCapture,
-              tooltip: '语音转文字',
-              icon: const Icon(Icons.mic_rounded),
-            ),
-            IconButton(
-              onPressed: _isRecognizing ? null : _runOcr,
-              tooltip: '识别当前画布',
-              icon: _isRecognizing
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.text_snippet_outlined),
-            ),
-            if (_ocrResult.trim().isNotEmpty || _isPreviewingAi)
+      child: PopScope<void>(
+        canPop: !_hasUnsavedChanges || _isSaving,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop || _isSaving || !_hasUnsavedChanges) {
+            return;
+          }
+          unawaited(_handleAttemptedPop());
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(widget.noteId == null ? '新建手写笔记' : '继续编辑笔记'),
+            actions: [
               IconButton(
-                onPressed: _isPreviewingAi ? null : _previewAiExtraction,
-                tooltip: 'AI整理预览',
-                icon: _isPreviewingAi
+                onPressed: _handleResultAction,
+                tooltip: context.isLarge
+                    ? (_isResultPanelExpanded ? '收起识别面板' : '展开识别面板')
+                    : '查看识别结果',
+                icon: Icon(
+                  context.isLarge
+                      ? Icons.view_sidebar_rounded
+                      : Icons.article_outlined,
+                ),
+              ),
+              IconButton(
+                onPressed: (_isSaving || _isRecognizing || _isPreviewingAi)
+                    ? null
+                    : _openVoiceCapture,
+                tooltip: '语音转文字',
+                icon: const Icon(Icons.mic_rounded),
+              ),
+              IconButton(
+                onPressed: _isRecognizing ? null : _runOcr,
+                tooltip: '识别当前画布',
+                icon: _isRecognizing
                     ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.auto_awesome_rounded),
+                    : const Icon(Icons.text_snippet_outlined),
               ),
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: IconButton(
-                onPressed: _isSaving ? null : _saveNote,
-                tooltip: '保存当前笔记',
-                icon: _isSaving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.save_outlined),
+              if (_ocrResult.trim().isNotEmpty || _isPreviewingAi)
+                IconButton(
+                  onPressed: _isPreviewingAi ? null : _previewAiExtraction,
+                  tooltip: 'AI整理预览',
+                  icon: _isPreviewingAi
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.auto_awesome_rounded),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: IconButton(
+                  onPressed: _isSaving ? null : _saveNote,
+                  tooltip: '保存当前笔记',
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_outlined),
+                ),
               ),
-            ),
-          ],
-        ),
-        body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isCompact = context.isCompact;
-              final horizontal =
-                  context.isLarge ? 24.0 : (isCompact ? 12.0 : 16.0);
+            ],
+          ),
+          body: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isCompact = context.isCompact;
+                final showLargeResultDock = context.isLarge;
+                final showCompactResultPeek =
+                    !showLargeResultDock && _shouldShowCompactResultPeek;
+                final horizontal =
+                    showLargeResultDock ? 24.0 : (isCompact ? 12.0 : 16.0);
 
-              final largePanelWidth =
-                  (constraints.maxWidth * 0.34).clamp(340.0, 420.0).toDouble();
-              final phoneDrawerBodyHeight =
-                  (constraints.maxHeight * 0.24).clamp(168.0, 220.0).toDouble();
-              final phoneDrawerOffset =
-                  _isResultPanelExpanded ? phoneDrawerBodyHeight + 82.0 : 68.0;
-              final phoneToolbarHeight = isCompact ? 78.0 : 88.0;
-              final canvasRightPadding =
-                  context.isLarge && _isResultPanelExpanded
-                      ? largePanelWidth + 18
-                      : 0.0;
-              final canvasBottomPadding = context.isLarge
-                  ? 124.0
-                  : phoneDrawerOffset + phoneToolbarHeight + 12.0;
+                final largePanelWidth = (constraints.maxWidth * 0.34)
+                    .clamp(340.0, 420.0)
+                    .toDouble();
+                final phoneToolbarHeight = isCompact ? 78.0 : 88.0;
+                final compactPeekSpacing = showCompactResultPeek ? 82.0 : 0.0;
+                final canvasRightPadding =
+                    showLargeResultDock && _isResultPanelExpanded
+                        ? largePanelWidth + 18
+                        : 0.0;
+                final canvasBottomPadding = showLargeResultDock
+                    ? 124.0
+                    : phoneToolbarHeight + compactPeekSpacing + 28.0;
 
-              return Stack(
-                children: [
-                  AnimatedPadding(
-                    duration: const Duration(milliseconds: 260),
-                    curve: Curves.easeOutCubic,
-                    padding: EdgeInsets.fromLTRB(
-                      horizontal,
-                      8,
-                      horizontal + canvasRightPadding,
-                      canvasBottomPadding,
-                    ),
-                    child: _buildCanvasStage(context),
-                  ),
-                  Positioned(
-                    left: horizontal,
-                    right: horizontal + canvasRightPadding,
-                    bottom: context.isLarge ? 24 : phoneDrawerOffset,
-                    child: const CanvasToolbar(),
-                  ),
-                  if (context.isLarge)
-                    Positioned(
-                      top: 8,
-                      right: horizontal,
-                      bottom: 24,
-                      child: _buildLargeResultDock(
-                        context,
-                        width: largePanelWidth,
+                return Stack(
+                  children: [
+                    AnimatedPadding(
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic,
+                      padding: EdgeInsets.fromLTRB(
+                        horizontal,
+                        8,
+                        horizontal + canvasRightPadding,
+                        canvasBottomPadding,
                       ),
-                    )
-                  else
+                      child: _buildCanvasStage(context),
+                    ),
+                    if (showCompactResultPeek)
+                      Positioned(
+                        left: horizontal,
+                        right: horizontal,
+                        bottom: phoneToolbarHeight + 32,
+                        child: _buildCompactResultPeek(context),
+                      ),
                     Positioned(
                       left: horizontal,
-                      right: horizontal,
-                      bottom: 16,
-                      child: AppBottomDrawer(
-                        expanded: _isResultPanelExpanded,
-                        onToggle: _toggleResultPanel,
-                        eyebrow: '识别面板',
-                        title: _panelTitle,
-                        description: _panelDescription,
-                        trailing: _PanelStatusPill(state: _ocrBannerState),
-                        child: SizedBox(
-                          height: phoneDrawerBodyHeight,
-                          child: OcrResultBanner(
-                            result: _ocrResult,
-                            state: _ocrBannerState,
-                            helperText: _ocrHelperText,
-                            onCopy: _copyOcrResult,
-                            onEdit: _editOcrResult,
-                          ),
+                      right: horizontal + canvasRightPadding,
+                      bottom: showLargeResultDock ? 24 : 20,
+                      child: const CanvasToolbar(),
+                    ),
+                    if (showLargeResultDock)
+                      Positioned(
+                        top: 8,
+                        right: horizontal,
+                        bottom: 24,
+                        child: _buildLargeResultDock(
+                          context,
+                          width: largePanelWidth,
                         ),
                       ),
-                    ),
-                ],
-              );
-            },
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -466,8 +462,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
         SpeechToTextVoiceRecognitionService();
 
     final media = MediaQuery.of(context);
-    final sheetHeight =
-        media.size.height * (context.isCompact ? 0.82 : 0.78);
+    final sheetHeight = media.size.height * (context.isCompact ? 0.82 : 0.78);
 
     final result = await showModalBottomSheet<VoiceCaptureResult>(
       context: context,
@@ -502,8 +497,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
       );
       _ocrBannerState = OcrBannerState.success;
       _ocrHelperText = '语音转写已写入。建议先快速校对，再决定是否保存或进行 AI 整理预览。';
+      _hasUnsavedChanges = true;
       _isResultPanelExpanded = true;
     });
+
+    if (!mounted || context.isLarge) return;
+    await _showCompactResultSheet();
   }
 
   String _mergeVoiceText({
@@ -635,7 +634,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
         return Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           child: SizedBox(
-            height: media.size.height * 0.74,
+            height: media.size.height * 0.84,
             child: OcrResultBanner(
               result: _ocrResult,
               state: _ocrBannerState,
@@ -750,10 +749,93 @@ class _CanvasScreenState extends State<CanvasScreen> {
     );
   }
 
+  Widget _buildCompactResultPeek(BuildContext context) {
+    return AppSurface(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      radius: 24,
+      backgroundColor: Colors.white.withValues(alpha: 0.97),
+      border: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+      boxShadow: AppShadows.floating,
+      child: InkWell(
+        onTap: _showCompactResultSheet,
+        borderRadius: BorderRadius.circular(20),
+        child: Row(
+          children: [
+            _PanelStatusPill(state: _ocrBannerState),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _panelTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _panelDescription,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.keyboard_arrow_up_rounded),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool get _shouldShowCompactResultPeek =>
+      _ocrBannerState != OcrBannerState.idle || _ocrResult.trim().isNotEmpty;
+
+  Future<void> _handleResultAction() async {
+    if (context.isLarge) {
+      _toggleResultPanel();
+      return;
+    }
+    await _showCompactResultSheet();
+  }
+
   void _toggleResultPanel() {
     setState(() {
       _isResultPanelExpanded = !_isResultPanelExpanded;
     });
+  }
+
+  Future<void> _handleAttemptedPop() async {
+    final shouldDiscard = await _confirmDiscardChanges();
+    if (!mounted || !shouldDiscard) return;
+    setState(() => _hasUnsavedChanges = false);
+    Navigator.of(context).pop();
+  }
+
+  Future<bool> _confirmDiscardChanges() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('放弃这次修改？'),
+        content: const Text('你还没有保存这页内容。现在返回会丢失刚刚的手写、识别结果或编辑。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('继续编辑'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('直接返回'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   void _onPanStart(DragStartDetails details) {
@@ -779,6 +861,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
               isEraser: state.currentTool == CanvasTool.eraser,
             ),
           );
+      _hasUnsavedChanges = true;
     }
     setState(() {
       _currentPoints = <Offset>[];
@@ -963,6 +1046,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
       try {
         context.read<NoteListBloc>().add(LoadNotes());
       } catch (_) {}
+      setState(() {
+        _hasUnsavedChanges = false;
+        _isResultPanelExpanded = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('笔记已保存，可以回到列表继续查看。')),
       );
@@ -1000,6 +1087,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
       _isResultPanelExpanded = true;
     });
 
+    final shouldUseCompactSheet = !context.isLarge;
+    var shouldOpenCompactSheet = false;
+
     try {
       final boundary = _canvasRepaintKey.currentContext?.findRenderObject()
           as RenderRepaintBoundary?;
@@ -1031,6 +1121,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
       setState(() {
         _ocrResult = result;
+        _hasUnsavedChanges = true;
         if (result.isEmpty) {
           _ocrBannerState = OcrBannerState.warning;
           _ocrHelperText = handwritingError == null
@@ -1051,14 +1142,20 @@ class _CanvasScreenState extends State<CanvasScreen> {
       });
 
       widget.onOcrComplete?.call(result);
+      shouldOpenCompactSheet = shouldUseCompactSheet;
     } catch (_) {
       setState(() {
         _ocrBannerState = OcrBannerState.error;
         _ocrResult = '';
         _ocrHelperText = '识别没有完成。你可以再试一次；如果持续失败，先保存当前手写内容。';
       });
+      shouldOpenCompactSheet = shouldUseCompactSheet;
     } finally {
       if (mounted) setState(() => _isRecognizing = false);
+    }
+
+    if (mounted && shouldOpenCompactSheet) {
+      await _showCompactResultSheet();
     }
   }
 
@@ -1111,6 +1208,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
             onPressed: () {
               setState(() {
                 _ocrResult = controller.text.trim();
+                _hasUnsavedChanges = true;
                 _ocrBannerState = _ocrResult.isEmpty
                     ? OcrBannerState.idle
                     : OcrBannerState.success;

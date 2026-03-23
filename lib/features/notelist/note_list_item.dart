@@ -126,15 +126,7 @@ class NoteListItem extends StatelessWidget {
   }
 
   String get _summary {
-    final text = note.recognizedText?.trim();
-    if (text == null || text.isEmpty) return _emptySummary;
-    final lines = text
-        .split('\n')
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty)
-        .toList(growable: false);
-    if (lines.isEmpty) return _emptySummary;
-    return lines.take(3).join('\n');
+    return note.displaySummary;
   }
 
   void _confirmDelete(BuildContext context) {
@@ -179,7 +171,7 @@ class _ListCardBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasText = summary != _emptySummary;
-    final title = hasText ? summary.split('\n').first : '未命名笔记';
+    final title = note.displayTitle;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -282,7 +274,7 @@ class _GridCardBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasText = summary != _emptySummary;
-    final title = hasText ? summary.split('\n').first : '未命名笔记';
+    final title = note.displayTitle;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -464,7 +456,7 @@ class _NotepadLinePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFFCBD8E0).withOpacity(0.45)
+      ..color = const Color(0xFFCBD8E0).withValues(alpha: 0.45)
       ..strokeWidth = 0.6;
 
     const step = 16.0;
@@ -473,7 +465,7 @@ class _NotepadLinePainter extends CustomPainter {
     }
     // Faint left margin line
     final marginPaint = Paint()
-      ..color = const Color(0xFFE8B4B4).withOpacity(0.40)
+      ..color = const Color(0xFFE8B4B4).withValues(alpha: 0.40)
       ..strokeWidth = 0.8;
     canvas.drawLine(
       const Offset(20, 0),

@@ -76,7 +76,6 @@ class SpeechToTextVoiceRecognitionService implements VoiceRecognitionService {
       ),
       listenFor: listenFor,
       pauseFor: pauseFor,
-      partialResults: partialResults,
       localeId: localeId,
       onSoundLevelChange: null,
       listenOptions: stt.SpeechListenOptions(
@@ -96,4 +95,3 @@ class SpeechToTextVoiceRecognitionService implements VoiceRecognitionService {
   @override
   Future<void> cancel() => speechToText.cancel();
 }
-
