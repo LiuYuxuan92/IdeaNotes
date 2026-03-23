@@ -7,7 +7,6 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:idea_notes/features/notelist/bloc/note_list_bloc.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
 
-
 DynamicLibrary _openSqlite() {
   const candidates = [
     '/usr/lib64/libsqlite3.so.0',
@@ -183,7 +182,8 @@ void main() {
       expect(bloc.state.status, equals(NoteListStatus.loaded));
       expect(bloc.state.notes.length, equals(1));
       expect(bloc.state.notes.first.id, equals('existing-note'));
-      expect(bloc.state.notes.first.thumbnailImagePath, equals('/tmp/existing-thumb.png'));
+      expect(bloc.state.notes.first.thumbnailImagePath,
+          equals('/tmp/existing-thumb.png'));
 
       await bloc.close();
     });
@@ -430,6 +430,47 @@ void main() {
       await bloc.close();
     });
 
+    test('LoadNotes：已有搜索词时会继续按关键词过滤结果', () async {
+      final bloc = NoteListBloc(databaseHelper: dbHelper);
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      await dbHelper.insertNote({
+        'id': 'note-milk',
+        'notebook_id': null,
+        'created_at': now,
+        'updated_at': now,
+        'canvas_data': null,
+        'snapshot_image_path': null,
+        'recognized_text': '买牛奶',
+      });
+      await dbHelper.insertNote({
+        'id': 'note-banana',
+        'notebook_id': null,
+        'created_at': now + 1,
+        'updated_at': now + 1,
+        'canvas_data': null,
+        'snapshot_image_path': null,
+        'recognized_text': '买香蕉',
+      });
+
+      bloc.add(LoadNotes());
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      bloc.add(const SearchNotes('牛奶'));
+      await Future.delayed(const Duration(milliseconds: 50));
+      expect(bloc.state.filteredNotes.length, equals(1));
+      expect(bloc.state.filteredNotes.first.id, equals('note-milk'));
+
+      bloc.add(LoadNotes());
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      expect(bloc.state.searchQuery, equals('牛奶'));
+      expect(bloc.state.filteredNotes.length, equals(1));
+      expect(bloc.state.filteredNotes.first.id, equals('note-milk'));
+
+      await bloc.close();
+    });
+
     // ===================== RefreshNotes =====================
 
     test('RefreshNotes：触发后重新从数据库加载最新笔记', () async {
@@ -456,6 +497,57 @@ void main() {
 
       expect(bloc.state.notes.length, equals(1));
       expect(bloc.state.notes.first.id, equals('external-note'));
+
+      await bloc.close();
+    });
+
+    test('RefreshNotes：有搜索词时会保留当前筛选结果', () async {
+      final bloc = NoteListBloc(databaseHelper: dbHelper);
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      await dbHelper.insertNote({
+        'id': 'note-milk',
+        'notebook_id': null,
+        'created_at': now,
+        'updated_at': now,
+        'canvas_data': null,
+        'snapshot_image_path': null,
+        'recognized_text': '买牛奶',
+      });
+      await dbHelper.insertNote({
+        'id': 'note-banana',
+        'notebook_id': null,
+        'created_at': now + 1,
+        'updated_at': now + 1,
+        'canvas_data': null,
+        'snapshot_image_path': null,
+        'recognized_text': '买香蕉',
+      });
+
+      bloc.add(LoadNotes());
+      await Future.delayed(const Duration(milliseconds: 200));
+      bloc.add(const SearchNotes('牛奶'));
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      await dbHelper.insertNote({
+        'id': 'note-milk-2',
+        'notebook_id': null,
+        'created_at': now + 2,
+        'updated_at': now + 2,
+        'canvas_data': null,
+        'snapshot_image_path': null,
+        'recognized_text': '牛奶到了',
+      });
+
+      bloc.add(RefreshNotes());
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      expect(bloc.state.searchQuery, equals('牛奶'));
+      expect(bloc.state.filteredNotes.length, equals(2));
+      expect(
+        bloc.state.filteredNotes.map((note) => note.id).toSet(),
+        equals({'note-milk', 'note-milk-2'}),
+      );
 
       await bloc.close();
     });

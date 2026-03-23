@@ -18,12 +18,21 @@ class _TestSearchBloc extends NoteListBloc {
   }
 }
 
-Widget _wrapWithBloc(NoteListBloc bloc) {
+Widget _wrapWithBloc(NoteListBloc bloc, {Size? mediaSize}) {
+  Widget child = BlocProvider.value(
+    value: bloc,
+    child: const SearchScreen(),
+  );
+
+  if (mediaSize != null) {
+    child = MediaQuery(
+      data: MediaQueryData(size: mediaSize),
+      child: child,
+    );
+  }
+
   return MaterialApp(
-    home: BlocProvider.value(
-      value: bloc,
-      child: const SearchScreen(),
-    ),
+    home: child,
   );
 }
 
@@ -83,6 +92,35 @@ void main() {
 
       expect(find.textContaining('买牛奶'), findsWidgets);
       expect(find.byType(ListView), findsOneWidget);
+
+      bloc.close();
+    });
+
+    testWidgets('手机端有查询时进入结果优先布局', (tester) async {
+      final note = Note(
+        id: 'search-note-mobile-1',
+        createdAt: DateTime(2026, 3, 13, 10, 0),
+        updatedAt: DateTime(2026, 3, 13, 10, 0),
+        recognizedText: '买牛奶\n记得今天下班前',
+      );
+
+      final bloc = _TestSearchBloc(NoteListState(
+        status: NoteListStatus.loaded,
+        searchQuery: '牛奶',
+        notes: [note],
+        filteredNotes: [note],
+      ));
+
+      await tester.pumpWidget(
+        _wrapWithBloc(bloc, mediaSize: const Size(390, 844)),
+      );
+      await tester.pump();
+
+      expect(find.text('搜索结果'), findsOneWidget);
+      expect(find.text('支出分类'), findsNothing);
+      expect(find.text('待办时间线'), findsNothing);
+      expect(find.text('健康记录'), findsNothing);
+      expect(find.textContaining('买牛奶'), findsWidgets);
 
       bloc.close();
     });

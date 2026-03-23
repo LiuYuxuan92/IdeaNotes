@@ -97,11 +97,15 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
       final notes = notesData.map((data) => Note.fromMap(data)).toList();
       // 按更新时间倒序排列
       notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      final filteredNotes = _filterNotes(
+        notes: notes,
+        query: state.searchQuery,
+      );
 
       emit(state.copyWith(
         status: NoteListStatus.loaded,
         notes: notes,
-        filteredNotes: notes,
+        filteredNotes: filteredNotes,
       ));
     } catch (e) {
       emit(state.copyWith(
@@ -112,24 +116,15 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
   }
 
   void _onSearchNotes(SearchNotes event, Emitter<NoteListState> emit) {
-    final query = event.query.toLowerCase();
+    final normalizedQuery = event.query.trim();
 
-    if (query.isEmpty) {
-      emit(state.copyWith(
-        searchQuery: '',
-        filteredNotes: state.notes,
-      ));
-    } else {
-      final filtered = state.notes.where((note) {
-        final searchableText = note.searchableText.toLowerCase();
-        return searchableText.contains(query);
-      }).toList();
-
-      emit(state.copyWith(
-        searchQuery: query,
-        filteredNotes: filtered,
-      ));
-    }
+    emit(state.copyWith(
+      searchQuery: normalizedQuery,
+      filteredNotes: _filterNotes(
+        notes: state.notes,
+        query: normalizedQuery,
+      ),
+    ));
   }
 
   Future<void> _onDeleteNote(
@@ -144,12 +139,13 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
 
       final updatedNotes =
           state.notes.where((n) => n.id != event.noteId).toList();
-      final updatedFiltered =
-          state.filteredNotes.where((n) => n.id != event.noteId).toList();
 
       emit(state.copyWith(
         notes: updatedNotes,
-        filteredNotes: updatedFiltered,
+        filteredNotes: _filterNotes(
+          notes: updatedNotes,
+          query: state.searchQuery,
+        ),
       ));
     } catch (e) {
       emit(state.copyWith(
@@ -172,12 +168,13 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
       await databaseHelper.insertNote(newNote.toMap());
 
       final updatedNotes = [newNote, ...state.notes];
-      final updatedFiltered =
-          state.searchQuery.isEmpty ? updatedNotes : state.filteredNotes;
 
       emit(state.copyWith(
         notes: updatedNotes,
-        filteredNotes: updatedFiltered,
+        filteredNotes: _filterNotes(
+          notes: updatedNotes,
+          query: state.searchQuery,
+        ),
       ));
     } catch (e) {
       emit(state.copyWith(
@@ -189,5 +186,20 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
   Future<void> _onRefreshNotes(
       RefreshNotes event, Emitter<NoteListState> emit) async {
     add(LoadNotes());
+  }
+
+  List<Note> _filterNotes({
+    required List<Note> notes,
+    required String query,
+  }) {
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isEmpty) {
+      return notes;
+    }
+
+    return notes.where((note) {
+      final searchableText = note.searchableText.toLowerCase();
+      return searchableText.contains(normalizedQuery);
+    }).toList(growable: false);
   }
 }

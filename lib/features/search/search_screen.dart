@@ -21,6 +21,11 @@ class _SearchScreenState extends State<SearchScreen> {
   Timer? _debounce;
   bool _didSyncInitialQuery = false;
 
+  bool _hasActiveQuery(NoteListState state) {
+    return state.searchQuery.trim().isNotEmpty ||
+        _searchController.text.trim().isNotEmpty;
+  }
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -120,9 +125,11 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _buildSearchHero(BuildContext context, NoteListState state) {
     final query = state.searchQuery;
     final hasQuery = query.isNotEmpty;
+    final isCompactQueryMode = context.isCompact && hasQuery;
 
     return AppSurface(
-      padding: EdgeInsets.all(context.isCompact ? 16 : 20),
+      padding: EdgeInsets.all(
+          isCompactQueryMode ? 14 : (context.isCompact ? 16 : 20)),
       radius: context.isCompact ? 28 : 32,
       gradient: const LinearGradient(
         begin: Alignment.topLeft,
@@ -132,15 +139,17 @@ class _SearchScreenState extends State<SearchScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const AppSectionHeader(
+          AppSectionHeader(
             eyebrow: '全局搜索',
-            title: '输入关键词搜索笔记',
-            description: '找原文内容时用关键词；按支出、待办、健康查时，直接走下面的结构化入口。',
+            title: isCompactQueryMode ? '结果优先显示' : '输入关键词搜索笔记',
+            description: isCompactQueryMode
+                ? '手机上会自动压缩顶部区域，避免结果被挤到屏幕外。'
+                : '找原文内容时用关键词；按支出、待办、健康查时，直接走下面的结构化入口。',
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: isCompactQueryMode ? 12 : 16),
           TextField(
             controller: _searchController,
-            autofocus: true,
+            autofocus: !context.isCompact,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
               hintText: '搜索笔记内容...',
@@ -160,6 +169,7 @@ class _SearchScreenState extends State<SearchScreen> {
             onSubmitted: (value) {
               _debounce?.cancel();
               context.read<NoteListBloc>().add(SearchNotes(value));
+              FocusScope.of(context).unfocus();
             },
             onChanged: (value) {
               setState(() {});
@@ -192,8 +202,10 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          _buildQueryJumpRow(context),
+          if (!isCompactQueryMode) ...[
+            const SizedBox(height: 14),
+            _buildQueryJumpRow(context),
+          ],
         ],
       ),
     );
@@ -319,6 +331,13 @@ class _SearchScreenState extends State<SearchScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (context.isCompact && _hasActiveQuery(state)) ...[
+          Text(
+            '搜索结果',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+        ],
         Wrap(
           spacing: 8,
           runSpacing: 8,
