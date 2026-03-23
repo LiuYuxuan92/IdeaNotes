@@ -21,6 +21,10 @@ class _SearchScreenState extends State<SearchScreen> {
   Timer? _debounce;
   bool _didSyncInitialQuery = false;
 
+  bool _isCompactQueryMode(BuildContext context, NoteListState state) {
+    return context.isCompact && _hasActiveQuery(state);
+  }
+
   bool _hasActiveQuery(NoteListState state) {
     return state.searchQuery.trim().isNotEmpty ||
         _searchController.text.trim().isNotEmpty;
@@ -53,26 +57,48 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget build(BuildContext context) {
     final horizontal =
         context.isLarge ? 32.0 : (context.isCompact ? 16.0 : 20.0);
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return Scaffold(
       body: SafeArea(
         child: BlocBuilder<NoteListBloc, NoteListState>(
           builder: (context, state) {
             _syncControllerFromState(state.searchQuery);
+            final isCompactQueryMode = _isCompactQueryMode(context, state);
+            final topPadding = isCompactQueryMode
+                ? (keyboardVisible ? 8.0 : 12.0)
+                : 16.0;
+            final sectionSpacing = isCompactQueryMode ? 10.0 : 16.0;
+            final bottomPadding = isCompactQueryMode
+                ? (keyboardVisible ? 10.0 : 14.0)
+                : 20.0;
 
             return Align(
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 980),
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(horizontal, 16, horizontal, 20),
+                  padding: EdgeInsets.fromLTRB(
+                    horizontal,
+                    topPadding,
+                    horizontal,
+                    bottomPadding,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildTopBar(context),
-                      const SizedBox(height: 16),
-                      _buildSearchHero(context, state),
-                      const SizedBox(height: 16),
+                      _buildTopBar(
+                        context,
+                        isCompactQueryMode: isCompactQueryMode,
+                      ),
+                      SizedBox(height: sectionSpacing),
+                      _buildSearchHero(
+                        context,
+                        state,
+                        isCompactQueryMode: isCompactQueryMode,
+                        keyboardVisible: keyboardVisible,
+                      ),
+                      SizedBox(height: sectionSpacing),
                       Expanded(child: _buildBody(context, state)),
                     ],
                   ),
@@ -94,7 +120,10 @@ class _SearchScreenState extends State<SearchScreen> {
     _didSyncInitialQuery = true;
   }
 
-  Widget _buildTopBar(BuildContext context) {
+  Widget _buildTopBar(
+    BuildContext context, {
+    required bool isCompactQueryMode,
+  }) {
     return Row(
       children: [
         IconButton.filledTonal(
@@ -107,14 +136,19 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('搜索', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 4),
               Text(
-                '全文搜索只搜 OCR 原文；按类型查请直接走下面的结构化入口。',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
+                isCompactQueryMode ? '搜索结果' : '搜索',
+                style: Theme.of(context).textTheme.titleMedium,
               ),
+              if (!isCompactQueryMode) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '全文搜索只搜 OCR 原文；按类型查请直接走下面的结构化入口。',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                ),
+              ],
             ],
           ),
         ),
@@ -122,10 +156,75 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildSearchHero(BuildContext context, NoteListState state) {
+  Widget _buildSearchHero(
+    BuildContext context,
+    NoteListState state, {
+    required bool isCompactQueryMode,
+    required bool keyboardVisible,
+  }) {
     final query = state.searchQuery;
     final hasQuery = query.isNotEmpty;
-    final isCompactQueryMode = context.isCompact && hasQuery;
+
+    if (isCompactQueryMode) {
+      return AppSurface(
+        padding: EdgeInsets.fromLTRB(
+          12,
+          keyboardVisible ? 10 : 12,
+          12,
+          keyboardVisible ? 10 : 12,
+        ),
+        radius: 24,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFFFFF), Color(0xFFF7FAFB)],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _searchController,
+              autofocus: false,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: '搜索笔记内容...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          _debounce?.cancel();
+                          context.read<NoteListBloc>().add(const SearchNotes(''));
+                          setState(() {});
+                        },
+                      ),
+              ),
+              onSubmitted: (value) {
+                _debounce?.cancel();
+                context.read<NoteListBloc>().add(SearchNotes(value));
+                FocusScope.of(context).unfocus();
+              },
+              onChanged: (value) {
+                setState(() {});
+                _onSearchChanged(value);
+              },
+            ),
+            if (!keyboardVisible) ...[
+              const SizedBox(height: 8),
+              Text(
+                '已筛出 ${state.filteredNotes.length} 条结果',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
 
     return AppSurface(
       padding: EdgeInsets.all(
@@ -254,6 +353,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildBody(BuildContext context, NoteListState state) {
     final query = state.searchQuery;
+    final isCompactQueryMode = _isCompactQueryMode(context, state);
 
     if (query.isEmpty) {
       return Center(
@@ -328,16 +428,30 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
 
+    if (isCompactQueryMode) {
+      return ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        itemCount: state.filteredNotes.length,
+        itemBuilder: (context, index) {
+          final note = state.filteredNotes[index];
+          return NoteListItem(
+            note: note,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (context) => NoteDetailScreen(note: note),
+                ),
+              );
+            },
+          );
+        },
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (context.isCompact && _hasActiveQuery(state)) ...[
-          Text(
-            '搜索结果',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 6),
-        ],
         Wrap(
           spacing: 8,
           runSpacing: 8,
