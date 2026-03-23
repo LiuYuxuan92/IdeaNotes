@@ -1,8 +1,9 @@
 IdeaNotes APK downloads
 
-- Source commit: `782d808` on `master`
-- Build target: Android `arm64-v8a`
-- File: `IdeaNotes-arm64-v8a-782d808.apk`
-- SHA-256: see `IdeaNotes-arm64-v8a-782d808.apk.sha256`
+- Source commit: `79332b2` on `master`
+- App version: `1.0.1+2`
+- Build target: Android release APK
+- File: `IdeaNotes-1.0.1-79332b2.apk`
+- SHA-256: see `IdeaNotes-1.0.1-79332b2.apk.sha256`
 
-This APK was built from the current repository state after the mobile detail and OCR UX fixes were merged.
+This build includes the mobile note detail and OCR UX fixes, and it now uses a visibly bumped version so installs are easier to verify.
