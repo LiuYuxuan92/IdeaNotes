@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 
+import '../models/stroke_style.dart';
+
 // ==================== Events ====================
 abstract class CanvasEvent extends Equatable {
   const CanvasEvent();
@@ -19,16 +21,18 @@ class StrokeAdded extends CanvasEvent {
   final Color color;
   final double strokeWidth;
   final bool isEraser;
+  final StrokeStyle style;
 
   const StrokeAdded({
     required this.points,
     required this.color,
     required this.strokeWidth,
     this.isEraser = false,
+    this.style = StrokeStyle.pen,
   });
 
   @override
-  List<Object?> get props => [points, color, strokeWidth, isEraser];
+  List<Object?> get props => [points, color, strokeWidth, isEraser, style];
 }
 
 class StrokeUndone extends CanvasEvent {}
@@ -73,19 +77,6 @@ class StrokesLoaded extends CanvasEvent {
   List<Object?> get props => [strokes];
 }
 
-class CanvasUndoStackUpdated extends CanvasEvent {
-  final List<DrawingStroke> undoStack;
-  final List<DrawingStroke> redoStack;
-
-  const CanvasUndoStackUpdated({
-    required this.undoStack,
-    required this.redoStack,
-  });
-
-  @override
-  List<Object?> get props => [undoStack, redoStack];
-}
-
 // ==================== Tool Enum ====================
 enum CanvasTool {
   pen, // 黑笔
@@ -101,12 +92,14 @@ class DrawingStroke extends Equatable {
   final Color color;
   final double strokeWidth;
   final bool isEraser;
+  final StrokeStyle style;
 
   const DrawingStroke({
     required this.points,
     required this.color,
     required this.strokeWidth,
     this.isEraser = false,
+    this.style = StrokeStyle.pen,
   });
 
   Map<String, dynamic> toJson() => {
@@ -114,6 +107,7 @@ class DrawingStroke extends Equatable {
         'color': color.toARGB32(),
         'strokeWidth': strokeWidth,
         'isEraser': isEraser,
+        'style': style.name,
       };
 
   factory DrawingStroke.fromJson(Map<String, dynamic> json) {
@@ -125,6 +119,9 @@ class DrawingStroke extends Equatable {
       color: Color(json['color'] as int),
       strokeWidth: (json['strokeWidth'] as num).toDouble(),
       isEraser: json['isEraser'] as bool? ?? false,
+      style: json['style'] == null
+          ? StrokeStyle.pen
+          : StrokeStyle.values.byName(json['style'] as String),
     );
   }
 
@@ -143,7 +140,7 @@ class DrawingStroke extends Equatable {
   }
 
   @override
-  List<Object?> get props => [points, color, strokeWidth, isEraser];
+  List<Object?> get props => [points, color, strokeWidth, isEraser, style];
 }
 
 // ==================== State ====================
@@ -154,6 +151,7 @@ class CanvasState extends Equatable {
   final Color currentColor;
   final double currentStrokeWidth;
   final CanvasTool currentTool;
+  final StrokeStyle currentStyle;
   final bool isDrawing;
 
   const CanvasState({
@@ -163,6 +161,7 @@ class CanvasState extends Equatable {
     this.currentColor = Colors.black,
     this.currentStrokeWidth = 3.0,
     this.currentTool = CanvasTool.pen,
+    this.currentStyle = StrokeStyle.pen,
     this.isDrawing = false,
   });
 
@@ -176,6 +175,7 @@ class CanvasState extends Equatable {
     Color? currentColor,
     double? currentStrokeWidth,
     CanvasTool? currentTool,
+    StrokeStyle? currentStyle,
     bool? isDrawing,
   }) {
     return CanvasState(
@@ -185,6 +185,7 @@ class CanvasState extends Equatable {
       currentColor: currentColor ?? this.currentColor,
       currentStrokeWidth: currentStrokeWidth ?? this.currentStrokeWidth,
       currentTool: currentTool ?? this.currentTool,
+      currentStyle: currentStyle ?? this.currentStyle,
       isDrawing: isDrawing ?? this.isDrawing,
     );
   }
@@ -197,6 +198,7 @@ class CanvasState extends Equatable {
         currentColor,
         currentStrokeWidth,
         currentTool,
+        currentStyle,
         isDrawing,
       ];
 }
@@ -225,6 +227,7 @@ class CanvasBloc extends Bloc<CanvasEvent, CanvasState> {
       color: event.color,
       strokeWidth: event.strokeWidth,
       isEraser: event.isEraser,
+      style: event.style,
     );
 
     emit(state.copyWith(
@@ -285,27 +288,33 @@ class CanvasBloc extends Bloc<CanvasEvent, CanvasState> {
   void _onToolChanged(CanvasToolChanged event, Emitter<CanvasState> emit) {
     Color newColor = state.currentColor;
     double newStrokeWidth = state.currentStrokeWidth;
+    StrokeStyle newStyle = state.currentStyle;
 
     switch (event.tool) {
       case CanvasTool.pen:
         newColor = Colors.black;
         newStrokeWidth = 3.0;
+        newStyle = StrokeStyle.pen;
         break;
       case CanvasTool.bluePen:
         newColor = const Color(0xFF1565C0);
         newStrokeWidth = 3.0;
+        newStyle = StrokeStyle.pen;
         break;
       case CanvasTool.redPen:
         newColor = const Color(0xFFC62828);
         newStrokeWidth = 3.0;
+        newStyle = StrokeStyle.pen;
         break;
       case CanvasTool.pencil:
         newColor = Colors.grey.shade700;
         newStrokeWidth = 1.5;
+        newStyle = StrokeStyle.pencil;
         break;
       case CanvasTool.eraser:
         newColor = Colors.white;
         newStrokeWidth = 20.0;
+        newStyle = StrokeStyle.pen;
         break;
     }
 
@@ -313,6 +322,7 @@ class CanvasBloc extends Bloc<CanvasEvent, CanvasState> {
       currentTool: event.tool,
       currentColor: newColor,
       currentStrokeWidth: newStrokeWidth,
+      currentStyle: newStyle,
     ));
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idea_notes/features/canvas/bloc/canvas_bloc.dart';
+import 'package:idea_notes/features/canvas/models/stroke_style.dart';
 
 void main() {
   group('CanvasBloc', () {
@@ -293,6 +294,37 @@ void main() {
       expect(bloc.state.strokes, isEmpty);
     });
 
+    test('序列化往返后，style 字段保持一致', () async {
+      bloc.add(const StrokeAdded(
+        points: [Offset(1, 1), Offset(5, 5)],
+        color: Colors.blue,
+        strokeWidth: 4.0,
+        style: StrokeStyle.highlighter,
+      ));
+      await Future<void>.delayed(Duration.zero);
+
+      final data = bloc.serializeCurrentStrokes();
+      bloc.add(CanvasCleared());
+      await Future<void>.delayed(Duration.zero);
+
+      bloc.loadFromData(data);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(bloc.state.strokes.first.style, equals(StrokeStyle.highlighter));
+    });
+
+    test('反序列化不含 style 的旧数据时，默认为 pen', () async {
+      final stroke = DrawingStroke.fromJson({
+        'points': [
+          {'x': 1.0, 'y': 2.0},
+        ],
+        'color': Colors.black.toARGB32(),
+        'strokeWidth': 3.0,
+        'isEraser': false,
+      });
+      expect(stroke.style, equals(StrokeStyle.pen));
+    });
+
     // ==================== 7. SelectTool ====================
 
     test('切换到 bluePen 后，currentTool 更新为 bluePen', () async {
@@ -335,6 +367,30 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(bloc.state.currentColor, equals(const Color(0xFF1565C0)));
+    });
+
+    test('切换到 pencil 后，currentStyle 更新为 pencil', () async {
+      bloc.add(const CanvasToolChanged(CanvasTool.pencil));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(bloc.state.currentStyle, equals(StrokeStyle.pencil));
+    });
+
+    test('切换到 pen 后，currentStyle 更新为 pen', () async {
+      bloc.add(const CanvasToolChanged(CanvasTool.pencil));
+      await Future<void>.delayed(Duration.zero);
+
+      bloc.add(const CanvasToolChanged(CanvasTool.pen));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(bloc.state.currentStyle, equals(StrokeStyle.pen));
+    });
+
+    test('切换到 eraser 后，currentStyle 更新为 pen', () async {
+      bloc.add(const CanvasToolChanged(CanvasTool.eraser));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(bloc.state.currentStyle, equals(StrokeStyle.pen));
     });
 
     // ==================== 8. CanvasColorChanged ====================
