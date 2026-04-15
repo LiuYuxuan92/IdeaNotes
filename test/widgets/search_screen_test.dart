@@ -124,8 +124,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('搜索结果'), findsOneWidget);
-      expect(find.text('全文搜索只搜 OCR 原文；按类型查请直接走下面的结构化入口。'),
-          findsNothing);
+      expect(find.text('全文搜索只搜 OCR 原文；按类型查请直接走下面的结构化入口。'), findsNothing);
       expect(find.text('支出分类'), findsNothing);
       expect(find.text('待办时间线'), findsNothing);
       expect(find.text('健康记录'), findsNothing);

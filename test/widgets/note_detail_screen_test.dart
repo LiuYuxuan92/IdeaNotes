@@ -1,44 +1,12 @@
-import 'dart:ffi' show DynamicLibrary;
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idea_notes/core/models/note.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
 import 'package:idea_notes/core/storage/database_migrations.dart';
 import 'package:idea_notes/features/notedetail/note_detail_screen.dart';
-import 'package:sqlite3/open.dart' as sqlite3_open;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-DynamicLibrary _openSqlite() {
-  const candidates = [
-    '/usr/lib64/libsqlite3.so.0',
-    '/usr/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    '/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    'libsqlite3.so',
-  ];
-
-  for (final path in candidates) {
-    if (path.startsWith('/') && !File(path).existsSync()) {
-      continue;
-    }
-
-    try {
-      return DynamicLibrary.open(path);
-    } catch (_) {}
-  }
-
-  throw StateError('Unable to load sqlite3 dynamic library');
-}
-
-void _ffiInit() {
-  sqlite3_open.open.overrideForAll(_openSqlite);
-}
-
-final _testDatabaseFactory = createDatabaseFactoryFfi(
-  ffiInit: _ffiInit,
-  noIsolate: true,
-);
+final _testDatabaseFactory = databaseFactoryFfiNoIsolate;
 
 Future<void> _setUpInMemoryDatabase() async {
   databaseFactory = _testDatabaseFactory;

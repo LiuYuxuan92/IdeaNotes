@@ -1,30 +1,31 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../config/app_secrets.dart';
 import 'deepseek_api_defaults.dart';
 import 'ocr_text_correction_engine.dart';
 
 class DeepSeekOcrTextCorrectionEngine implements OcrTextCorrectionEngine {
   final String endpoint;
-  final String apiKey;
+  final String? apiKey;
   final String model;
   final Duration requestTimeout;
   final HttpClient Function()? httpClientFactory;
 
-  const DeepSeekOcrTextCorrectionEngine({
+  DeepSeekOcrTextCorrectionEngine({
     this.endpoint = DeepSeekApiDefaults.endpoint,
-    this.apiKey = DeepSeekApiDefaults.apiKey,
+    String? apiKey,
     this.model = DeepSeekApiDefaults.model,
     this.requestTimeout = const Duration(seconds: 20),
     this.httpClientFactory,
-  });
+  }) : apiKey = apiKey ?? const AppSecrets().resolvedDeepSeekApiKey;
 
   @override
   String get engineName => 'deepseek';
 
   @override
   Future<bool> isAvailable() async {
-    if (apiKey.trim().isEmpty) {
+    if (apiKey == null) {
       return false;
     }
     return !Platform.environment.containsKey('FLUTTER_TEST');
@@ -34,6 +35,13 @@ class DeepSeekOcrTextCorrectionEngine implements OcrTextCorrectionEngine {
   Future<OcrTextCorrectionResult> correctText(
     OcrTextCorrectionRequest request,
   ) async {
+    final resolvedApiKey = apiKey;
+    if (resolvedApiKey == null) {
+      return const OcrTextCorrectionResult.failure(
+        message: 'Missing DEEPSEEK_API_KEY',
+      );
+    }
+
     final stopwatch = Stopwatch()..start();
     final client = httpClientFactory?.call() ?? HttpClient();
     client.connectionTimeout = requestTimeout;
@@ -44,7 +52,7 @@ class DeepSeekOcrTextCorrectionEngine implements OcrTextCorrectionEngine {
       httpRequest.headers.contentType = ContentType.json;
       httpRequest.headers.set(
         HttpHeaders.authorizationHeader,
-        'Bearer $apiKey',
+        'Bearer $resolvedApiKey',
       );
       httpRequest.add(utf8.encode(jsonEncode(_buildPayload(request))));
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../bloc/canvas_bloc.dart';
+import '../models/stroke_style.dart';
 
 /// CustomPainter 实现 - 负责绘制手写笔迹
 class CanvasPainter extends CustomPainter {
@@ -8,6 +9,7 @@ class CanvasPainter extends CustomPainter {
   final Color currentColor;
   final double currentStrokeWidth;
   final bool isErasing;
+  final StrokeStyle currentStyle;
 
   CanvasPainter({
     required this.strokes,
@@ -15,6 +17,7 @@ class CanvasPainter extends CustomPainter {
     required this.currentColor,
     required this.currentStrokeWidth,
     this.isErasing = false,
+    this.currentStyle = StrokeStyle.pen,
   });
 
   @override
@@ -37,6 +40,7 @@ class CanvasPainter extends CustomPainter {
         color: currentColor,
         strokeWidth: currentStrokeWidth,
         isEraser: isErasing,
+        style: currentStyle,
       );
       _drawStroke(canvas, currentStroke);
     }
@@ -46,16 +50,23 @@ class CanvasPainter extends CustomPainter {
 
   void _drawBackground(Canvas canvas, Size size) {
     final backgroundPaint = Paint()..color = Colors.white;
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), backgroundPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(0, 0, size.width, size.height), backgroundPaint);
   }
 
   void _drawStroke(Canvas canvas, DrawingStroke stroke) {
     if (stroke.points.isEmpty) return;
 
+    final style = stroke.style;
+    final effectiveStrokeWidth = stroke.strokeWidth * style.widthMultiplier;
+    final strokeColor = stroke.isEraser
+        ? Colors.transparent
+        : stroke.color.withValues(alpha: style.opacity);
     final paint = Paint()
-      ..color = stroke.isEraser ? Colors.transparent : stroke.color
-      ..strokeWidth = stroke.strokeWidth
-      ..strokeCap = StrokeCap.round
+      ..color = strokeColor
+      ..strokeWidth = effectiveStrokeWidth
+      ..strokeCap =
+          style == StrokeStyle.highlighter ? StrokeCap.square : StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke
       ..blendMode = stroke.isEraser ? BlendMode.clear : BlendMode.srcOver;
@@ -63,7 +74,8 @@ class CanvasPainter extends CustomPainter {
     if (stroke.points.length == 1) {
       // 单点绘制圆点
       final point = stroke.points.first;
-      canvas.drawCircle(point, stroke.strokeWidth / 2, paint..style = PaintingStyle.fill);
+      canvas.drawCircle(
+          point, effectiveStrokeWidth / 2, paint..style = PaintingStyle.fill);
     } else {
       // 使用贝塞尔曲线绘制平滑笔画
       final path = Path();
@@ -96,7 +108,8 @@ class CanvasPainter extends CustomPainter {
         oldDelegate.currentPoints != currentPoints ||
         oldDelegate.currentColor != currentColor ||
         oldDelegate.currentStrokeWidth != currentStrokeWidth ||
-        oldDelegate.isErasing != isErasing;
+        oldDelegate.isErasing != isErasing ||
+        oldDelegate.currentStyle != currentStyle;
   }
 }
 
@@ -129,6 +142,7 @@ class GridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant GridPainter oldDelegate) {
-    return oldDelegate.gridSize != gridSize || oldDelegate.gridColor != gridColor;
+    return oldDelegate.gridSize != gridSize ||
+        oldDelegate.gridColor != gridColor;
   }
 }

@@ -89,8 +89,18 @@ void main() {
     });
 
     test('api key 为空时会标记为不可用', () async {
-      const engine = DeepSeekOcrTextCorrectionEngine(apiKey: '   ');
+      final engine = DeepSeekOcrTextCorrectionEngine(apiKey: '   ');
       expect(await engine.isAvailable(), isFalse);
+    });
+
+    test('默认构造且缺少环境变量 key 时直接返回失败', () async {
+      final engine = DeepSeekOcrTextCorrectionEngine();
+
+      final result = await engine.correctText(request);
+
+      expect(result.success, isFalse);
+      expect(result.errorMessage, 'Missing DEEPSEEK_API_KEY');
+      expect(result.rawResponse, isEmpty);
     });
   });
 }

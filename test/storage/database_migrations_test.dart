@@ -1,39 +1,11 @@
-import 'dart:ffi' show DynamicLibrary;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idea_notes/core/storage/database_migrations.dart';
 import 'package:path/path.dart' as path;
-import 'package:sqlite3/open.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-DynamicLibrary _openSqlite() {
-  const candidates = [
-    '/usr/lib64/libsqlite3.so.0',
-    '/usr/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    '/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    'libsqlite3.so',
-  ];
-
-  for (final candidate in candidates) {
-    if (candidate.startsWith('/') && !File(candidate).existsSync()) {
-      continue;
-    }
-    try {
-      return DynamicLibrary.open(candidate);
-    } catch (_) {}
-  }
-  throw StateError('Unable to load sqlite3 dynamic library');
-}
-
-void _ffiInit() {
-  open.overrideForAll(_openSqlite);
-}
-
-final _databaseFactory = createDatabaseFactoryFfi(
-  ffiInit: _ffiInit,
-  noIsolate: true,
-);
+final _databaseFactory = databaseFactoryFfiNoIsolate;
 
 Future<void> _createLegacyV3Schema(DatabaseExecutor db) async {
   await db.execute('PRAGMA foreign_keys = ON');
@@ -100,6 +72,16 @@ void main() {
   group('database migrations', () {
     setUp(() {
       databaseFactory = _databaseFactory;
+    });
+
+    test('ffi factory opens an in-memory database on the current platform',
+        () async {
+      final db = await _databaseFactory.openDatabase(inMemoryDatabasePath);
+      final rows = await db.rawQuery('SELECT 1 AS value');
+
+      expect(rows.single['value'], 1);
+
+      await db.close();
     });
 
     test('create schema version 6 includes structured-data tables and indexes',

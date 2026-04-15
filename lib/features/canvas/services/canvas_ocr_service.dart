@@ -30,7 +30,8 @@ class CanvasOcrService {
     Future<Directory> Function(String prefix)? createTempDirectory,
     Future<void> Function(String path, Uint8List bytes)? writeFile,
     Future<void> Function(Directory directory)? deleteDirectory,
-  })  : createTempDirectory = createTempDirectory ?? _defaultCreateTempDirectory,
+  })  : createTempDirectory =
+            createTempDirectory ?? _defaultCreateTempDirectory,
         writeFile = writeFile ?? _defaultWriteFile,
         deleteDirectory = deleteDirectory ?? _defaultDeleteDirectory;
 

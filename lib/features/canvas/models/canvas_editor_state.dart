@@ -21,7 +21,8 @@ class CanvasEditorState {
     bool clearExistingNote = false,
   }) {
     return CanvasEditorState(
-      existingNote: clearExistingNote ? null : (existingNote ?? this.existingNote),
+      existingNote:
+          clearExistingNote ? null : (existingNote ?? this.existingNote),
       ocrResult: ocrResult ?? this.ocrResult,
       isSaving: isSaving ?? this.isSaving,
       isRecognizing: isRecognizing ?? this.isRecognizing,

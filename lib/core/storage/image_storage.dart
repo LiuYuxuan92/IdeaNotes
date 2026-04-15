@@ -9,7 +9,7 @@ import 'package:uuid/uuid.dart';
 /// 负责保存、加载和删除笔记相关的图片（快照和缩略图）
 class ImageStorage {
   static const _uuid = Uuid();
-  
+
   /// 获取图片存储根目录
   static Future<Directory> _getImageDirectory() async {
     final appDir = await getApplicationDocumentsDirectory();
@@ -42,20 +42,22 @@ class ImageStorage {
 
   /// 保存快照图片
   /// 返回保存后的文件路径
-  static Future<String> saveSnapshot(Uint8List imageBytes, String noteId) async {
+  static Future<String> saveSnapshot(
+      Uint8List imageBytes, String noteId) async {
     final snapshotDir = await _getSnapshotDirectory();
     final fileName = '${noteId}_${_uuid.v4()}.png';
     final filePath = '${snapshotDir.path}/$fileName';
-    
+
     final file = File(filePath);
     await file.writeAsBytes(imageBytes);
-    
+
     return filePath;
   }
 
   /// 保存缩略图图片（缩放为 200×200）
   /// 返回保存后的文件路径，解码失败时返回 null
-  static Future<String?> saveThumbnail(Uint8List imageBytes, String noteId) async {
+  static Future<String?> saveThumbnail(
+      Uint8List imageBytes, String noteId) async {
     final decoded = img.decodeImage(imageBytes);
     if (decoded == null) return null;
     final thumbnail = img.copyResize(decoded, width: 200, height: 200);
@@ -100,9 +102,10 @@ class ImageStorage {
   }
 
   /// 在指定目录中删除与笔记相关的图片
-  static Future<void> _deleteImagesInDirectory(Directory dir, String noteId) async {
+  static Future<void> _deleteImagesInDirectory(
+      Directory dir, String noteId) async {
     if (!await dir.exists()) return;
-    
+
     final files = await dir.list().toList();
     for (final entity in files) {
       if (entity is File && entity.path.contains(noteId)) {

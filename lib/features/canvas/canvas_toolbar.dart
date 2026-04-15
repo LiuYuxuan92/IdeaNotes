@@ -247,8 +247,8 @@ class _ToolPill extends StatelessWidget {
                 width: isCompact ? 30 : 34,
                 height: isCompact ? 30 : 34,
                 decoration: BoxDecoration(
-                  color: spec.swatch
-                      .withValues(alpha: isSelected ? 0.20 : 0.12),
+                  color:
+                      spec.swatch.withValues(alpha: isSelected ? 0.20 : 0.12),
                   borderRadius: BorderRadius.circular(isCompact ? 12 : 14),
                 ),
                 child: Icon(spec.icon,
@@ -261,7 +261,8 @@ class _ToolPill extends StatelessWidget {
                   Text(
                     spec.label,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: isSelected ? spec.swatch : AppColors.textPrimary,
+                          color:
+                              isSelected ? spec.swatch : AppColors.textPrimary,
                           fontWeight: FontWeight.w700,
                         ),
                   ),

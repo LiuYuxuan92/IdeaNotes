@@ -314,11 +314,11 @@ void main() {
     });
 
     test('反序列化不含 style 的旧数据时，默认为 pen', () async {
-      final stroke = DrawingStroke.fromJson({
+      final stroke = DrawingStroke.fromJson(const {
         'points': [
           {'x': 1.0, 'y': 2.0},
         ],
-        'color': Colors.black.toARGB32(),
+        'color': 4278190080,
         'strokeWidth': 3.0,
         'isEraser': false,
       });

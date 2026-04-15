@@ -25,7 +25,8 @@ class IncrementalOcrService {
     final String deltaText;
     if (fullText == trimmedPrevious) {
       deltaText = '';
-    } else if (trimmedPrevious.isNotEmpty && fullText.startsWith(trimmedPrevious)) {
+    } else if (trimmedPrevious.isNotEmpty &&
+        fullText.startsWith(trimmedPrevious)) {
       deltaText = fullText.substring(trimmedPrevious.length).trim();
     } else {
       deltaText = fullText;

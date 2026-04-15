@@ -20,7 +20,7 @@ IdeaNotes 是一个结构清晰、功能完整度较高的 Flutter 项目。Feat
 **文件**: `lib/core/extraction/deepseek_text_understanding_engine.dart:10`
 
 ```dart
-static const String _defaultApiKey = 'sk-6c543564507b4918ad2c810967d34f50';
+static const String _defaultApiKey = '[REDACTED_DEEPSEEK_KEY]';
 ```
 
 API 密钥直接写死在代码里并提交到 Git 仓库，属于严重安全隐患：

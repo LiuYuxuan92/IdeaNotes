@@ -1,6 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
-const int kDatabaseVersion = 6;
+const int kDatabaseVersion = 7;
 
 Future<void> createDatabaseSchema(Database db, int version) async {
   await db.execute('PRAGMA foreign_keys = ON');
@@ -16,6 +16,9 @@ Future<void> createDatabaseSchema(Database db, int version) async {
   }
   if (version >= 6) {
     await _createAiAndFilterSchema(db);
+  }
+  if (version >= 7) {
+    await _createExtractionPreviewSchema(db);
   }
 }
 
@@ -44,6 +47,11 @@ Future<void> migrateDatabaseSchema(
 
   if (oldVersion < 6) {
     await _createAiAndFilterSchema(db);
+  }
+
+  if (oldVersion < 7) {
+    await _createExtractionPreviewSchema(db);
+    await _addAiExtractionCorrectionColumns(db);
   }
 
   // Defensive: keep the default notebook present for future writes.
@@ -251,6 +259,9 @@ Future<void> _createAiAndFilterSchema(Database db) async {
       raw_response_json TEXT NOT NULL,
       normalized_entries_json TEXT NOT NULL,
       status TEXT NOT NULL,
+      user_correction TEXT,
+      original_extraction TEXT,
+      correction_feedback TEXT,
       created_at INTEGER NOT NULL,
       FOREIGN KEY (note_id) REFERENCES notes (id) ON DELETE CASCADE
     )
@@ -278,6 +289,49 @@ Future<void> _createAiAndFilterSchema(Database db) async {
       updated_at INTEGER NOT NULL
     )
   ''');
+}
+
+Future<void> _createExtractionPreviewSchema(Database db) async {
+  await db.execute('''
+    CREATE TABLE IF NOT EXISTS extraction_previews (
+      id TEXT PRIMARY KEY,
+      note_id TEXT NOT NULL,
+      raw_text TEXT NOT NULL,
+      rule_extraction TEXT,
+      ai_extraction TEXT,
+      merged_extraction TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      user_correction TEXT,
+      created_at INTEGER NOT NULL,
+      confirmed_at INTEGER,
+      FOREIGN KEY (note_id) REFERENCES notes (id) ON DELETE CASCADE
+    )
+  ''');
+}
+
+Future<void> _addAiExtractionCorrectionColumns(Database db) async {
+  await _addColumnIfMissing(db, 'ai_extractions', 'user_correction', 'TEXT');
+  await _addColumnIfMissing(
+      db, 'ai_extractions', 'original_extraction', 'TEXT');
+  await _addColumnIfMissing(
+      db, 'ai_extractions', 'correction_feedback', 'TEXT');
+}
+
+Future<void> _addColumnIfMissing(
+  Database db,
+  String tableName,
+  String columnName,
+  String columnDefinition,
+) async {
+  final columns = await db.rawQuery('PRAGMA table_info($tableName)');
+  final hasColumn = columns.any((row) => row['name'] == columnName);
+  if (hasColumn) {
+    return;
+  }
+
+  await db.execute(
+    'ALTER TABLE $tableName ADD COLUMN $columnName $columnDefinition',
+  );
 }
 
 Future<void> _backfillEntriesFromLegacyNoteEntries(Database db) async {
@@ -322,10 +376,10 @@ Future<void> _backfillEntriesFromLegacyNoteEntries(Database db) async {
       COALESCE(
         CASE
           WHEN ne.event_date IS NOT NULL
-            THEN strftime('%Y-%m-%d', ne.event_date / 1000, 'unixepoch', 'localtime')
+            THEN strftime('%Y-%m-%d', ne.event_date / 1000, 'unixepoch')
         END,
-        strftime('%Y-%m-%d', n.created_at / 1000, 'unixepoch', 'localtime'),
-        strftime('%Y-%m-%d', 'now', 'localtime')
+        strftime('%Y-%m-%d', n.created_at / 1000, 'unixepoch'),
+        strftime('%Y-%m-%d', 'now')
       ) AS occurred_date,
       NULL AS end_at,
       COALESCE(ne.event_title, ne.memo_text, ne.raw_text) AS title,

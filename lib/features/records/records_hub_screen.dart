@@ -8,6 +8,9 @@ import '../../core/query/entry_record.dart';
 import '../../core/query/timeline_service.dart';
 import '../../core/storage/database_helper.dart';
 import '../../core/storage/entry_repository.dart';
+import 'widgets/finance_summary_charts.dart';
+import 'widgets/health_trend_charts.dart';
+import 'widgets/task_summary_cards.dart';
 
 enum RecordsHubTab { finance, tasks, health }
 
@@ -311,6 +314,12 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
           ],
         ),
         const SizedBox(height: 12),
+        FinanceSummaryCharts(
+          totalAmount: data.summary.totalAmount,
+          categories: data.categories,
+          trend: data.trend,
+        ),
+        const SizedBox(height: 12),
         AppSurface(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -368,27 +377,10 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
     return ListView(
       padding: const EdgeInsets.only(top: 12, bottom: 12),
       children: [
-        _MetricGrid(
-          items: [
-            _MetricItem(
-              label: '全部待办',
-              value: '${data.totalCount} 条',
-              icon: Icons.list_alt_rounded,
-              accent: AppColors.inkBlue,
-            ),
-            _MetricItem(
-              label: '待处理',
-              value: '${data.pendingCount} 条',
-              icon: Icons.pending_actions_rounded,
-              accent: AppColors.warning,
-            ),
-            _MetricItem(
-              label: '已完成',
-              value: '${data.completedCount} 条',
-              icon: Icons.task_alt_rounded,
-              accent: AppColors.success,
-            ),
-          ],
+        TaskSummaryCards(
+          totalCount: data.totalCount,
+          pendingCount: data.pendingCount,
+          completedCount: data.completedCount,
         ),
         const SizedBox(height: 12),
         AppSurface(
@@ -431,6 +423,8 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
     return ListView(
       padding: const EdgeInsets.only(top: 12, bottom: 12),
       children: [
+        HealthTrendCharts(typeStats: data.typeStats),
+        const SizedBox(height: 12),
         _MetricGrid(
           items: data.typeStats
               .map(

@@ -9,6 +9,13 @@ class DatabaseHelper {
 
   DatabaseHelper._init();
 
+  static String escapeLikePattern(String input) {
+    return input
+        .replaceAll('\\', r'\\')
+        .replaceAll('%', r'\%')
+        .replaceAll('_', r'\_');
+  }
+
   /// Injects an existing [Database] instance, intended for use in tests only.
   /// Call [close] before injecting to reset the singleton state.
   static void injectDatabase(Database db) {
@@ -116,10 +123,11 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> searchNotes(String query) async {
     final db = await database;
+    final escapedQuery = escapeLikePattern(query);
     return await db.query(
       'notes',
-      where: 'recognized_text LIKE ?',
-      whereArgs: ['%$query%'],
+      where: "recognized_text LIKE ? ESCAPE '\\'",
+      whereArgs: ['%$escapedQuery%'],
       orderBy: 'updated_at DESC',
     );
   }

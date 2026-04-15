@@ -53,7 +53,8 @@ void main() {
       expect(delta.deltaText, '第三行');
     });
 
-    test('returns full text as delta when text does not extend previous', () async {
+    test('returns full text as delta when text does not extend previous',
+        () async {
       final service = IncrementalOcrService(
         engine: _FakeOcrEngine(['全新内容']),
       );

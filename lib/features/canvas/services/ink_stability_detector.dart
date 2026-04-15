@@ -15,7 +15,8 @@ class InkStabilityDetector {
   Rect? _pendingBounds;
   final _controller = StreamController<StableRegion>.broadcast();
 
-  InkStabilityDetector({this.idleThreshold = const Duration(milliseconds: 1500)});
+  InkStabilityDetector(
+      {this.idleThreshold = const Duration(milliseconds: 1500)});
 
   Stream<StableRegion> get onRegionStabilized => _controller.stream;
 

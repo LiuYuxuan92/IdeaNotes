@@ -1,44 +1,11 @@
-import 'dart:ffi' show DynamicLibrary;
-import 'dart:io';
-
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
 import 'package:idea_notes/features/canvas/services/canvas_load_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-
-DynamicLibrary _openSqlite() {
-  const candidates = [
-    '/usr/lib64/libsqlite3.so.0',
-    '/usr/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    '/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    'libsqlite3.so',
-  ];
-
-  for (final path in candidates) {
-    if (path.startsWith('/') && !File(path).existsSync()) {
-      continue;
-    }
-
-    try {
-      return DynamicLibrary.open(path);
-    } catch (_) {}
-  }
-
-  throw StateError('Unable to load sqlite3 dynamic library');
-}
-
-void _ffiInit() {
-  open.overrideForAll(_openSqlite);
-}
-
-final _testDatabaseFactory = createDatabaseFactoryFfi(
-  ffiInit: _ffiInit,
-  noIsolate: true,
-);
+final _testDatabaseFactory = databaseFactoryFfiNoIsolate;
 
 Future<void> _setUpInMemoryDatabase() async {
   databaseFactory = _testDatabaseFactory;
@@ -99,7 +66,8 @@ void main() {
     });
 
     test('note 不存在时返回空结果', () async {
-      final service = CanvasLoadService(databaseHelper: DatabaseHelper.instance);
+      final service =
+          CanvasLoadService(databaseHelper: DatabaseHelper.instance);
       final result = await service.load('missing-note');
 
       expect(result.note, isNull);
@@ -120,7 +88,8 @@ void main() {
         'recognized_text': '识别结果',
       });
 
-      final service = CanvasLoadService(databaseHelper: DatabaseHelper.instance);
+      final service =
+          CanvasLoadService(databaseHelper: DatabaseHelper.instance);
       final result = await service.load('note-1');
 
       expect(result.note, isNotNull);

@@ -50,7 +50,8 @@ class NoteEntry extends Equatable {
           : null,
       event: type == NoteEntryType.event
           ? EventRecord(
-              title: (map['event_title'] as String?) ?? ((map['raw_text'] as String?) ?? ''),
+              title: (map['event_title'] as String?) ??
+                  ((map['raw_text'] as String?) ?? ''),
               date: eventDateMillis != null
                   ? DateTime.fromMillisecondsSinceEpoch(eventDateMillis)
                   : null,

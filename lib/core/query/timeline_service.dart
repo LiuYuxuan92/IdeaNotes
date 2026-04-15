@@ -34,9 +34,10 @@ class TimelineService {
         .map(
           (key) => TimelineDayGroup(
             date: _parseDate(key),
-            entries: grouped[key]!..sort(
-              (a, b) => b.createdAt.compareTo(a.createdAt),
-            ),
+            entries: grouped[key]!
+              ..sort(
+                (a, b) => b.createdAt.compareTo(a.createdAt),
+              ),
           ),
         )
         .toList();

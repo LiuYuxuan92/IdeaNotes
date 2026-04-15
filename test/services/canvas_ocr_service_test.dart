@@ -94,7 +94,8 @@ void main() {
 
     test('识别异常时返回统一错误信息', () async {
       final service = CanvasOcrService(
-        createTempDirectory: (prefix) async => Directory.systemTemp.createTemp(prefix),
+        createTempDirectory: (prefix) async =>
+            Directory.systemTemp.createTemp(prefix),
         writeFile: (path, bytes) async => File(path).writeAsBytes(bytes),
       );
 

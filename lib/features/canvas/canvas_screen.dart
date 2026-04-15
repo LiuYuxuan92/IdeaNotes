@@ -10,6 +10,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image/image.dart' as img;
 import 'package:permission_handler/permission_handler.dart';
 
+import 'package:idea_notes/features/canvas/models/extraction_preview.dart';
+
 import '../../app/design_system.dart';
 import '../../core/extraction/deepseek_ocr_text_correction_engine.dart';
 import '../../core/extraction/extraction_models.dart';
@@ -26,7 +28,11 @@ import 'services/canvas_ai_preview_service.dart';
 import 'services/handwriting_recognition_service.dart';
 import 'services/canvas_save_service.dart';
 import 'services/voice_recognition_service.dart';
+import 'widgets/canvas_ai_overlay.dart';
+import 'widgets/canvas_bottom_toolbar.dart';
 import 'widgets/canvas_painter.dart';
+import 'widgets/canvas_responsive_layout.dart';
+import 'widgets/canvas_stage.dart';
 import 'widgets/voice_capture_sheet.dart';
 
 class CanvasScreen extends StatefulWidget {
@@ -41,6 +47,7 @@ class CanvasScreen extends StatefulWidget {
   final CanvasAiPreviewService? aiPreviewServiceOverride;
   final VoiceRecognitionService? voiceRecognitionServiceOverride;
   final bool openVoiceOnStart;
+  final List<ExtractionPreview> initialPendingPreviews;
 
   const CanvasScreen({
     super.key,
@@ -55,6 +62,7 @@ class CanvasScreen extends StatefulWidget {
     this.aiPreviewServiceOverride,
     this.voiceRecognitionServiceOverride,
     this.openVoiceOnStart = false,
+    this.initialPendingPreviews = const [],
   });
 
   @override
@@ -74,6 +82,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   bool _isPreviewingAi = false;
   bool _isResultPanelExpanded = false;
   bool _hasUnsavedChanges = false;
+  List<ExtractionPreview> _pendingPreviews = [];
   Note? _existingNote;
   OcrEngine? _ocrEngine;
   OcrBannerState _ocrBannerState = OcrBannerState.idle;
@@ -83,6 +92,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
     super.initState();
     _canvasBloc = CanvasBloc();
     _handwritingRecognitionService = HandwritingRecognitionService();
+    _pendingPreviews =
+        List<ExtractionPreview>.from(widget.initialPendingPreviews);
     _initOcrEngine();
     if (widget.noteId != null) {
       _loadExistingNote();
@@ -245,43 +256,57 @@ class _CanvasScreenState extends State<CanvasScreen> {
                     ? 124.0
                     : phoneToolbarHeight + compactPeekSpacing + 28.0;
 
-                return Stack(
-                  children: [
-                    AnimatedPadding(
-                      duration: const Duration(milliseconds: 260),
-                      curve: Curves.easeOutCubic,
-                      padding: EdgeInsets.fromLTRB(
-                        horizontal,
-                        8,
-                        horizontal + canvasRightPadding,
-                        canvasBottomPadding,
-                      ),
-                      child: _buildCanvasStage(context),
+                return CanvasResponsiveLayout(
+                  stage: AnimatedPadding(
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    padding: EdgeInsets.fromLTRB(
+                      horizontal,
+                      8,
+                      horizontal + canvasRightPadding,
+                      canvasBottomPadding,
                     ),
-                    if (showCompactResultPeek)
-                      Positioned(
-                        left: horizontal,
-                        right: horizontal,
-                        bottom: phoneToolbarHeight + 32,
-                        child: _buildCompactResultPeek(context),
-                      ),
-                    Positioned(
-                      left: horizontal,
-                      right: horizontal + canvasRightPadding,
-                      bottom: showLargeResultDock ? 24 : 20,
-                      child: const CanvasToolbar(),
-                    ),
-                    if (showLargeResultDock)
-                      Positioned(
-                        top: 8,
-                        right: horizontal,
-                        bottom: 24,
-                        child: _buildLargeResultDock(
-                          context,
-                          width: largePanelWidth,
+                    child: _buildCanvasStage(context),
+                  ),
+                  overlay: Stack(
+                    children: [
+                      if (showCompactResultPeek)
+                        Positioned(
+                          left: horizontal,
+                          right: horizontal,
+                          bottom: phoneToolbarHeight + 32,
+                          child: _buildCompactResultPeek(context),
                         ),
-                      ),
-                  ],
+                      if (_pendingPreviews.isNotEmpty)
+                        Positioned(
+                          top: 8,
+                          left: horizontal,
+                          width: largePanelWidth,
+                          child: CanvasAiOverlay(
+                            previews: _pendingPreviews,
+                            onConfirm: _confirmPreview,
+                          ),
+                        ),
+                      if (showLargeResultDock)
+                        Positioned(
+                          top: 8,
+                          right: horizontal,
+                          bottom: 24,
+                          child: _buildLargeResultDock(
+                            context,
+                            width: largePanelWidth,
+                          ),
+                        ),
+                    ],
+                  ),
+                  toolbar: Positioned(
+                    left: horizontal,
+                    right: horizontal + canvasRightPadding,
+                    bottom: showLargeResultDock ? 24 : 20,
+                    child: const CanvasBottomToolbar(
+                      child: CanvasToolbar(),
+                    ),
+                  ),
                 );
               },
             ),
@@ -364,9 +389,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(isCompact ? 22 : 28),
-                child: RepaintBoundary(
-                  key: _canvasRepaintKey,
-                  child: _buildCanvas(),
+                child: CanvasStage(
+                  painter: RepaintBoundary(
+                    key: _canvasRepaintKey,
+                    child: _buildCanvas(),
+                  ),
                 ),
               ),
             ),
@@ -433,8 +460,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
     try {
       final previewService = widget.aiPreviewServiceOverride ??
           CanvasAiPreviewService(
-            engine: const DeepSeekTextUnderstandingEngine(),
-            correctionEngine: const DeepSeekOcrTextCorrectionEngine(),
+            engine: DeepSeekTextUnderstandingEngine(),
+            correctionEngine: DeepSeekOcrTextCorrectionEngine(),
           );
       result = await previewService.preview(
         existingNote: _existingNote,
@@ -761,6 +788,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
               currentColor: state.currentColor,
               currentStrokeWidth: state.currentStrokeWidth,
               isErasing: state.currentTool == CanvasTool.eraser,
+              currentStyle: state.currentStyle,
             ),
             size: Size.infinite,
           ),
@@ -858,6 +886,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
     return result ?? false;
   }
 
+  void _confirmPreview(ExtractionPreview preview) {
+    setState(() {
+      _pendingPreviews =
+          _pendingPreviews.where((p) => p.id != preview.id).toList();
+    });
+  }
+
   void _onPanStart(DragStartDetails details) {
     if (_isResultPanelExpanded) setState(() => _isResultPanelExpanded = false);
     setState(() {
@@ -879,6 +914,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
               color: state.currentColor,
               strokeWidth: state.currentStrokeWidth,
               isEraser: state.currentTool == CanvasTool.eraser,
+              style: state.currentStyle,
             ),
           );
       _hasUnsavedChanges = true;
@@ -1041,7 +1077,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       final saveService = widget.saveServiceOverride ??
           CanvasSaveService(
             databaseHelper: DatabaseHelper.instance,
-            textUnderstandingEngine: const DeepSeekTextUnderstandingEngine(),
+            textUnderstandingEngine: DeepSeekTextUnderstandingEngine(),
           );
       final canvasData = _canvasBloc.serializeCurrentStrokes();
       final snapshotBytes = widget.captureCanvasForSave != null

@@ -30,16 +30,16 @@ void main() {
 
     final pixel = await tester.runAsync(() async {
       final image = await recorder.endRecording().toImage(
-        size.width.toInt(),
-        size.height.toInt(),
-      );
+            size.width.toInt(),
+            size.height.toInt(),
+          );
       return image.toByteData();
     });
     final center = pixel!.getUint32((20 * size.width.toInt() + 20) * 4);
     final color = Color(center);
 
-    expect(color.alpha, lessThan(255));
-    expect(color.blue, greaterThan(0));
+    expect(color.a, lessThan(1.0));
+    expect(color.b, greaterThan(0.0));
   });
 
   testWidgets('CanvasPainter applies widthMultiplier to stroke width', (
@@ -64,9 +64,9 @@ void main() {
 
     final penPixels = await tester.runAsync(() async {
       final image = await penRecorder.endRecording().toImage(
-        size.width.toInt(),
-        size.height.toInt(),
-      );
+            size.width.toInt(),
+            size.height.toInt(),
+          );
       return image.toByteData();
     });
 
@@ -87,9 +87,9 @@ void main() {
 
     final hlPixels = await tester.runAsync(() async {
       final image = await hlRecorder.endRecording().toImage(
-        size.width.toInt(),
-        size.height.toInt(),
-      );
+            size.width.toInt(),
+            size.height.toInt(),
+          );
       return image.toByteData();
     });
 

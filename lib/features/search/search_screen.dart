@@ -65,13 +65,11 @@ class _SearchScreenState extends State<SearchScreen> {
           builder: (context, state) {
             _syncControllerFromState(state.searchQuery);
             final isCompactQueryMode = _isCompactQueryMode(context, state);
-            final topPadding = isCompactQueryMode
-                ? (keyboardVisible ? 8.0 : 12.0)
-                : 16.0;
+            final topPadding =
+                isCompactQueryMode ? (keyboardVisible ? 8.0 : 12.0) : 16.0;
             final sectionSpacing = isCompactQueryMode ? 10.0 : 16.0;
-            final bottomPadding = isCompactQueryMode
-                ? (keyboardVisible ? 10.0 : 14.0)
-                : 20.0;
+            final bottomPadding =
+                isCompactQueryMode ? (keyboardVisible ? 10.0 : 14.0) : 20.0;
 
             return Align(
               alignment: Alignment.topCenter,
@@ -196,7 +194,9 @@ class _SearchScreenState extends State<SearchScreen> {
                         onPressed: () {
                           _searchController.clear();
                           _debounce?.cancel();
-                          context.read<NoteListBloc>().add(const SearchNotes(''));
+                          context
+                              .read<NoteListBloc>()
+                              .add(const SearchNotes(''));
                           setState(() {});
                         },
                       ),
