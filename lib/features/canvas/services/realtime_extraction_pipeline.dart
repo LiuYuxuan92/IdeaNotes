@@ -17,7 +17,7 @@ class DefaultRealtimeExtractionPipeline {
 
   Stream<ExtractionPreview> get previews => _controller.stream;
 
-  Future<void> submitDelta({
+  Future<ExtractionPreview> submitDelta({
     required String noteId,
     required String rawText,
   }) async {
@@ -29,8 +29,16 @@ class DefaultRealtimeExtractionPipeline {
       createdAt: DateTime.now(),
       mergedExtractionJson: rawText,
     );
-    await previewRepository.upsertPreview(preview);
+
+    // New notes may not exist in the database yet, so preview persistence is
+    // best-effort. The UI should still receive the preview even if storage
+    // fails and the note has not been saved.
+    try {
+      await previewRepository.upsertPreview(preview);
+    } catch (_) {}
+
     _controller.add(preview);
+    return preview;
   }
 
   void dispose() {

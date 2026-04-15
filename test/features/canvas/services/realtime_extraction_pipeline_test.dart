@@ -46,6 +46,23 @@ class _SyncPreviewStore implements PreviewStore {
   }
 }
 
+class _FailingPreviewStore implements PreviewStore {
+  @override
+  Future<List<ExtractionPreview>> getPendingPreviews(String noteId) async =>
+      const [];
+
+  @override
+  Future<ExtractionPreview?> getPreview(String id) async => null;
+
+  @override
+  Future<void> markConfirmed(String id, DateTime confirmedAt) async {}
+
+  @override
+  Future<int> upsertPreview(ExtractionPreview preview) {
+    throw Exception('foreign key constraint failed');
+  }
+}
+
 void main() {
   group('RealtimeExtractionPipeline', () {
     test('multiple submitDelta calls emit multiple previews', () async {
@@ -102,6 +119,24 @@ void main() {
 
       final stored = await repository.getPendingPreviews('note-1');
       expect(stored.first.id, equals('id-100'));
+    });
+
+    test('submitDelta still emits preview when persistence fails', () async {
+      final pipeline = DefaultRealtimeExtractionPipeline(
+        previewRepository: _FailingPreviewStore(),
+        createId: () => 'draft-preview',
+      );
+
+      final previews = <ExtractionPreview>[];
+      pipeline.previews.listen(previews.add);
+
+      final preview =
+          await pipeline.submitDelta(noteId: 'draft-note', rawText: 'milk 12');
+
+      expect(preview.id, 'draft-preview');
+      expect(preview.noteId, 'draft-note');
+      expect(previews, hasLength(1));
+      expect(previews.first.rawText, 'milk 12');
     });
   });
 }

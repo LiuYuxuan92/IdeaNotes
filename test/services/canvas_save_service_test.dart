@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:idea_notes/core/models/note.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
 import 'package:idea_notes/core/storage/database_migrations.dart';
+import 'package:idea_notes/core/storage/extraction_preview_repository.dart';
+import 'package:idea_notes/features/canvas/models/extraction_preview.dart';
 import 'package:idea_notes/features/canvas/services/canvas_save_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -391,6 +393,112 @@ void main() {
         whereArgs: ['note-empty-text'],
       );
       expect(structuredEntries, isEmpty);
+    });
+    test('persistPreviews stores previews against the saved note', () async {
+      final service = CanvasSaveService(
+        databaseHelper: DatabaseHelper.instance,
+      );
+      final repository = ExtractionPreviewRepository(
+        databaseHelper: DatabaseHelper.instance,
+      );
+      final now = DateTime(2026, 3, 22, 9, 0);
+
+      await DatabaseHelper.instance.insertNote({
+        'id': 'note-preview-store',
+        'notebook_id': 'default-notebook',
+        'created_at': now.millisecondsSinceEpoch,
+        'updated_at': now.millisecondsSinceEpoch,
+        'recognized_text': 'milk 12',
+      });
+
+      final note = Note(
+        id: 'note-preview-store',
+        notebookId: 'default-notebook',
+        createdAt: now,
+        updatedAt: now,
+        recognizedText: 'milk 12',
+      );
+
+      await service.persistPreviews(
+        note: note,
+        previews: [
+          ExtractionPreview(
+            id: 'preview-pending',
+            noteId: 'draft-note',
+            rawText: 'milk 12',
+            mergedExtractionJson: 'milk 12',
+            status: ExtractionPreviewStatus.pending,
+            createdAt: now,
+          ),
+          ExtractionPreview(
+            id: 'preview-confirmed',
+            noteId: 'draft-note',
+            rawText: 'bread 9',
+            mergedExtractionJson: 'bread 9',
+            status: ExtractionPreviewStatus.confirmed,
+            createdAt: now,
+            confirmedAt: now.add(const Duration(minutes: 1)),
+          ),
+        ],
+      );
+
+      final pending = await repository.getPendingPreviews('note-preview-store');
+      expect(pending, hasLength(1));
+      expect(pending.first.id, 'preview-pending');
+
+      final confirmed = await repository.getPreview('preview-confirmed');
+      expect(confirmed, isNotNull);
+      expect(confirmed!.noteId, 'note-preview-store');
+      expect(confirmed.status, ExtractionPreviewStatus.confirmed);
+    });
+
+    test('confirmPreview upserts missing preview and marks it confirmed',
+        () async {
+      final service = CanvasSaveService(
+        databaseHelper: DatabaseHelper.instance,
+      );
+      final repository = ExtractionPreviewRepository(
+        databaseHelper: DatabaseHelper.instance,
+      );
+      final now = DateTime(2026, 3, 22, 10, 0);
+
+      await DatabaseHelper.instance.insertNote({
+        'id': 'note-preview-confirm',
+        'notebook_id': 'default-notebook',
+        'created_at': now.millisecondsSinceEpoch,
+        'updated_at': now.millisecondsSinceEpoch,
+        'recognized_text': 'coffee 28',
+      });
+
+      final note = Note(
+        id: 'note-preview-confirm',
+        notebookId: 'default-notebook',
+        createdAt: now,
+        updatedAt: now,
+        recognizedText: 'coffee 28',
+      );
+
+      final preview = ExtractionPreview(
+        id: 'preview-confirm',
+        noteId: 'draft-note',
+        rawText: 'coffee 28',
+        mergedExtractionJson: 'coffee 28',
+        status: ExtractionPreviewStatus.pending,
+        createdAt: now,
+      );
+
+      final confirmedAt = now.add(const Duration(minutes: 5));
+      await service.confirmPreview(
+        note: note,
+        preview: preview,
+        now: confirmedAt,
+      );
+
+      final stored = await repository.getPreview('preview-confirm');
+      expect(stored, isNotNull);
+      expect(stored!.noteId, 'note-preview-confirm');
+      expect(stored.status, ExtractionPreviewStatus.confirmed);
+      expect(stored.confirmedAt, confirmedAt);
     });
   });
 }

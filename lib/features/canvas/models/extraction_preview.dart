@@ -52,6 +52,27 @@ class ExtractionPreview extends Equatable {
     };
   }
 
+  ExtractionPreview copyWith({
+    String? id,
+    String? noteId,
+    String? rawText,
+    String? mergedExtractionJson,
+    ExtractionPreviewStatus? status,
+    DateTime? createdAt,
+    DateTime? confirmedAt,
+    bool clearConfirmedAt = false,
+  }) {
+    return ExtractionPreview(
+      id: id ?? this.id,
+      noteId: noteId ?? this.noteId,
+      rawText: rawText ?? this.rawText,
+      mergedExtractionJson: mergedExtractionJson ?? this.mergedExtractionJson,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+      confirmedAt: clearConfirmedAt ? null : (confirmedAt ?? this.confirmedAt),
+    );
+  }
+
   @override
   List<Object?> get props => [
         id,

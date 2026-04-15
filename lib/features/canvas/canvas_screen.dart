@@ -94,11 +94,14 @@ class _CanvasScreenState extends State<CanvasScreen> {
   bool _isResultPanelExpanded = false;
   bool _hasUnsavedChanges = false;
   List<ExtractionPreview> _pendingPreviews = [];
+  List<ExtractionPreview> _confirmedPreviews = [];
   Note? _existingNote;
   OcrEngine? _ocrEngine;
   OcrBannerState _ocrBannerState = OcrBannerState.idle;
 
   // Realtime preview services
+  late final CanvasSaveService _saveService;
+  late final PreviewStore _previewRepository;
   late final InkStabilityDetector _stabilityDetector;
   late final RegionCaptureService _regionCaptureService;
   late final DefaultRealtimeExtractionPipeline _realtimePipeline;
@@ -111,6 +114,16 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _handwritingRecognitionService = HandwritingRecognitionService();
     _pendingPreviews =
         List<ExtractionPreview>.from(widget.initialPendingPreviews);
+    _previewRepository = widget.saveServiceOverride?.previewRepository ??
+        ExtractionPreviewRepository(
+          databaseHelper: DatabaseHelper.instance,
+        );
+    _saveService = widget.saveServiceOverride ??
+        CanvasSaveService(
+          databaseHelper: DatabaseHelper.instance,
+          textUnderstandingEngine: DeepSeekTextUnderstandingEngine(),
+          previewRepository: _previewRepository,
+        );
 
     // Initialize realtime preview services
     _stabilityDetector =
@@ -119,9 +132,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
         widget.regionCaptureServiceOverride ?? RegionCaptureService();
     _realtimePipeline = widget.realtimePipelineOverride ??
         DefaultRealtimeExtractionPipeline(
-          previewRepository: ExtractionPreviewRepository(
-            databaseHelper: DatabaseHelper.instance,
-          ),
+          previewRepository: _previewRepository,
           createId: () =>
               '${DateTime.now().millisecondsSinceEpoch}-${_currentPoints.length}',
         );
@@ -178,9 +189,17 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (noteData == null || !mounted) return;
 
     final note = Note.fromMap(noteData);
+    final storedPendingPreviews =
+        await _saveService.loadPendingPreviews(note.id);
+    if (!mounted) return;
+
     setState(() {
       _existingNote = note;
       _ocrResult = note.recognizedText ?? '';
+      _pendingPreviews = _mergePreviews(
+        _pendingPreviews,
+        storedPendingPreviews,
+      );
       _hasUnsavedChanges = false;
       if (_ocrResult.trim().isNotEmpty) {
         _ocrBannerState = OcrBannerState.success;
@@ -931,11 +950,56 @@ class _CanvasScreenState extends State<CanvasScreen> {
     return result ?? false;
   }
 
-  void _confirmPreview(ExtractionPreview preview) {
-    setState(() {
-      _pendingPreviews =
-          _pendingPreviews.where((p) => p.id != preview.id).toList();
-    });
+  Future<void> _confirmPreview(ExtractionPreview preview) async {
+    final confirmedPreview = preview.copyWith(
+      status: ExtractionPreviewStatus.confirmed,
+      confirmedAt: DateTime.now(),
+    );
+
+    if (_existingNote == null) {
+      if (!mounted) return;
+      setState(() {
+        _pendingPreviews =
+            _pendingPreviews.where((p) => p.id != preview.id).toList();
+        _confirmedPreviews = List<ExtractionPreview>.from(_confirmedPreviews)
+          ..add(confirmedPreview);
+        _hasUnsavedChanges = true;
+      });
+      return;
+    }
+
+    try {
+      await _saveService.confirmPreview(
+        note: _existingNote!,
+        preview: preview,
+        now: confirmedPreview.confirmedAt!,
+      );
+      if (!mounted) return;
+      setState(() {
+        _pendingPreviews =
+            _pendingPreviews.where((p) => p.id != preview.id).toList();
+      });
+    } catch (error, stackTrace) {
+      debugPrint('Confirming preview failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('预览确认失败，请稍后再试。')),
+      );
+    }
+  }
+
+  List<ExtractionPreview> _mergePreviews(
+    List<ExtractionPreview> current,
+    List<ExtractionPreview> incoming,
+  ) {
+    final merged = <String, ExtractionPreview>{
+      for (final preview in current) preview.id: preview,
+    };
+    for (final preview in incoming) {
+      merged[preview.id] = preview;
+    }
+    return merged.values.toList(growable: false);
   }
 
   void _listenForStableRegions() {
@@ -968,8 +1032,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
           noteId: noteId,
           rawText: delta.deltaText,
         );
-      } catch (_) {
-        // Silently ignore realtime OCR failures; user can still use manual OCR.
+      } catch (error, stackTrace) {
+        debugPrint('Realtime OCR preview failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
       }
     });
   }
@@ -1174,11 +1239,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
   Future<void> _saveNote() async {
     setState(() => _isSaving = true);
     try {
-      final saveService = widget.saveServiceOverride ??
-          CanvasSaveService(
-            databaseHelper: DatabaseHelper.instance,
-            textUnderstandingEngine: DeepSeekTextUnderstandingEngine(),
-          );
       final canvasData = _canvasBloc.serializeCurrentStrokes();
       final snapshotBytes = widget.captureCanvasForSave != null
           ? await widget.captureCanvasForSave!.call()
@@ -1187,7 +1247,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
           ? await widget.captureThumbnailForSave!.call()
           : await _captureThumbnail();
 
-      _existingNote = await saveService.save(
+      _existingNote = await _saveService.save(
         CanvasSaveInput(
           existingNote: _existingNote,
           canvasData: canvasData,
@@ -1197,12 +1257,20 @@ class _CanvasScreenState extends State<CanvasScreen> {
           now: DateTime.now(),
         ),
       );
+      await _saveService.persistPreviews(
+        note: _existingNote!,
+        previews: [..._pendingPreviews, ..._confirmedPreviews],
+      );
 
       if (!mounted) return;
       try {
         context.read<NoteListBloc>().add(LoadNotes());
       } catch (_) {}
       setState(() {
+        _pendingPreviews = _pendingPreviews
+            .map((preview) => preview.copyWith(noteId: _existingNote!.id))
+            .toList(growable: false);
+        _confirmedPreviews = const [];
         _hasUnsavedChanges = false;
         _isResultPanelExpanded = false;
       });

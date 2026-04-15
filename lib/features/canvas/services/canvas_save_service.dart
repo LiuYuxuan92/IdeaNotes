@@ -10,7 +10,9 @@ import 'package:idea_notes/core/parser/entry_parser.dart';
 import 'package:idea_notes/core/parser/entry_text_rules.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
 import 'package:idea_notes/core/storage/entry_repository.dart';
+import 'package:idea_notes/core/storage/extraction_preview_repository.dart';
 import 'package:idea_notes/core/storage/image_storage.dart';
+import 'package:idea_notes/features/canvas/models/extraction_preview.dart';
 import 'package:uuid/uuid.dart';
 
 class CanvasSaveInput {
@@ -38,6 +40,7 @@ class CanvasSaveService {
   final Future<String> Function(Uint8List bytes, String noteId) saveSnapshot;
   final Future<String?> Function(Uint8List bytes, String noteId) saveThumbnail;
   final TextUnderstandingEngine? textUnderstandingEngine;
+  final PreviewStore previewRepository;
   final String extractionPromptVersion;
   final String timezone;
   final String locale;
@@ -48,6 +51,7 @@ class CanvasSaveService {
     Future<String> Function(Uint8List bytes, String noteId)? saveSnapshot,
     Future<String?> Function(Uint8List bytes, String noteId)? saveThumbnail,
     EntryRepository? entryRepository,
+    PreviewStore? previewRepository,
     this.textUnderstandingEngine,
     this.extractionPromptVersion = '1.0',
     this.timezone = 'Asia/Shanghai',
@@ -56,7 +60,9 @@ class CanvasSaveService {
         saveSnapshot = saveSnapshot ?? ImageStorage.saveSnapshot,
         saveThumbnail = saveThumbnail ?? ImageStorage.saveThumbnail,
         entryRepository =
-            entryRepository ?? EntryRepository(databaseHelper: databaseHelper);
+            entryRepository ?? EntryRepository(databaseHelper: databaseHelper),
+        previewRepository = previewRepository ??
+            ExtractionPreviewRepository(databaseHelper: databaseHelper);
 
   Future<Note> save(CanvasSaveInput input) async {
     final noteId = input.existingNote?.id ?? createId();
@@ -80,6 +86,39 @@ class CanvasSaveService {
 
     await _replaceEntries(note, recognizedText, input.now);
     return note;
+  }
+
+  Future<List<ExtractionPreview>> loadPendingPreviews(String noteId) {
+    return previewRepository.getPendingPreviews(noteId);
+  }
+
+  Future<void> persistPreviews({
+    required Note note,
+    required Iterable<ExtractionPreview> previews,
+  }) async {
+    for (final preview in previews) {
+      await previewRepository.upsertPreview(
+        preview.copyWith(noteId: note.id),
+      );
+    }
+  }
+
+  Future<void> confirmPreview({
+    required Note note,
+    required ExtractionPreview preview,
+    required DateTime now,
+  }) async {
+    final existing = await previewRepository.getPreview(preview.id);
+    if (existing == null || existing.noteId != note.id) {
+      await previewRepository.upsertPreview(
+        preview.copyWith(
+          noteId: note.id,
+          status: ExtractionPreviewStatus.pending,
+          clearConfirmedAt: true,
+        ),
+      );
+    }
+    await previewRepository.markConfirmed(preview.id, now);
   }
 
   Future<_SavedImagePaths> _persistImages({
