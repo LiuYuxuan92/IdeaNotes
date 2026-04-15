@@ -20,6 +20,7 @@ import '../../core/models/note.dart';
 import '../../core/ocr/ocr_engine.dart';
 import '../../core/ocr/vision_ocr.dart';
 import '../../core/storage/database_helper.dart';
+import '../../core/storage/extraction_preview_repository.dart';
 import '../../shared/widgets/ocr_result_banner.dart';
 import '../notelist/bloc/note_list_bloc.dart';
 import 'bloc/canvas_bloc.dart';
@@ -27,6 +28,10 @@ import 'canvas_toolbar.dart';
 import 'services/canvas_ai_preview_service.dart';
 import 'services/handwriting_recognition_service.dart';
 import 'services/canvas_save_service.dart';
+import 'services/incremental_ocr_service.dart';
+import 'services/ink_stability_detector.dart';
+import 'services/realtime_extraction_pipeline.dart';
+import 'services/region_capture_service.dart';
 import 'services/voice_recognition_service.dart';
 import 'widgets/canvas_ai_overlay.dart';
 import 'widgets/canvas_bottom_toolbar.dart';
@@ -48,6 +53,9 @@ class CanvasScreen extends StatefulWidget {
   final VoiceRecognitionService? voiceRecognitionServiceOverride;
   final bool openVoiceOnStart;
   final List<ExtractionPreview> initialPendingPreviews;
+  final InkStabilityDetector? stabilityDetectorOverride;
+  final RegionCaptureService? regionCaptureServiceOverride;
+  final DefaultRealtimeExtractionPipeline? realtimePipelineOverride;
 
   const CanvasScreen({
     super.key,
@@ -63,6 +71,9 @@ class CanvasScreen extends StatefulWidget {
     this.voiceRecognitionServiceOverride,
     this.openVoiceOnStart = false,
     this.initialPendingPreviews = const [],
+    this.stabilityDetectorOverride,
+    this.regionCaptureServiceOverride,
+    this.realtimePipelineOverride,
   });
 
   @override
@@ -76,7 +87,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   late final HandwritingRecognitionService _handwritingRecognitionService;
 
   String _ocrResult = '';
-  String _ocrHelperText = '写完后点一下“识别”，再决定是否复制、编辑或保存。';
+  String _ocrHelperText = '写完后点一下”识别”，再决定是否复制、编辑或保存。';
   bool _isSaving = false;
   bool _isRecognizing = false;
   bool _isPreviewingAi = false;
@@ -87,6 +98,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
   OcrEngine? _ocrEngine;
   OcrBannerState _ocrBannerState = OcrBannerState.idle;
 
+  // Realtime preview services
+  late final InkStabilityDetector _stabilityDetector;
+  late final RegionCaptureService _regionCaptureService;
+  late final DefaultRealtimeExtractionPipeline _realtimePipeline;
+  StreamSubscription<StableRegion>? _stabilitySubscription;
+
   @override
   void initState() {
     super.initState();
@@ -94,6 +111,31 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _handwritingRecognitionService = HandwritingRecognitionService();
     _pendingPreviews =
         List<ExtractionPreview>.from(widget.initialPendingPreviews);
+
+    // Initialize realtime preview services
+    _stabilityDetector =
+        widget.stabilityDetectorOverride ?? InkStabilityDetector();
+    _regionCaptureService =
+        widget.regionCaptureServiceOverride ?? RegionCaptureService();
+    _realtimePipeline = widget.realtimePipelineOverride ??
+        DefaultRealtimeExtractionPipeline(
+          previewRepository: ExtractionPreviewRepository(
+            databaseHelper: DatabaseHelper.instance,
+          ),
+          createId: () =>
+              '${DateTime.now().millisecondsSinceEpoch}-${_currentPoints.length}',
+        );
+    _listenForStableRegions();
+
+    // Subscribe to pipeline preview stream for UI updates
+    _realtimePipeline.previews.listen((preview) {
+      if (!mounted) return;
+      setState(() {
+        _pendingPreviews = List.from(_pendingPreviews)..add(preview);
+        _hasUnsavedChanges = true;
+      });
+    });
+
     _initOcrEngine();
     if (widget.noteId != null) {
       _loadExistingNote();
@@ -154,6 +196,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   @override
   void dispose() {
+    _stabilitySubscription?.cancel();
+    _stabilityDetector.dispose();
+    _realtimePipeline.dispose();
     _canvasBloc.close();
     _ocrEngine?.dispose();
     unawaited(_handwritingRecognitionService.dispose());
@@ -893,6 +938,57 @@ class _CanvasScreenState extends State<CanvasScreen> {
     });
   }
 
+  void _listenForStableRegions() {
+    _stabilitySubscription =
+        _stabilityDetector.onRegionStabilized.listen((region) async {
+      if (!mounted) return;
+
+      final bytes = await _regionCaptureService.capture(
+        repaintKey: _canvasRepaintKey,
+        region: region.bounds,
+      );
+      if (bytes == null || !mounted) return;
+
+      // Skip OCR if no engine available
+      if (_ocrEngine == null) return;
+
+      try {
+        final incrementalOcr = IncrementalOcrService(engine: _ocrEngine!);
+        final delta = await incrementalOcr.recognizeRegion(
+          bytes,
+          previousText: _ocrResult,
+        );
+        if (delta.deltaText.isEmpty || !mounted) return;
+
+        _ocrResult = delta.fullText;
+
+        final noteId = _existingNote?.id ??
+            'draft-${DateTime.now().millisecondsSinceEpoch}';
+        await _realtimePipeline.submitDelta(
+          noteId: noteId,
+          rawText: delta.deltaText,
+        );
+      } catch (_) {
+        // Silently ignore realtime OCR failures; user can still use manual OCR.
+      }
+    });
+  }
+
+  Rect? _boundsForPoints(List<Offset> points) {
+    if (points.isEmpty) return null;
+    double minX = double.infinity;
+    double minY = double.infinity;
+    double maxX = double.negativeInfinity;
+    double maxY = double.negativeInfinity;
+    for (final p in points) {
+      if (p.dx < minX) minX = p.dx;
+      if (p.dy < minY) minY = p.dy;
+      if (p.dx > maxX) maxX = p.dx;
+      if (p.dy > maxY) maxY = p.dy;
+    }
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
+  }
+
   void _onPanStart(DragStartDetails details) {
     if (_isResultPanelExpanded) setState(() => _isResultPanelExpanded = false);
     setState(() {
@@ -908,6 +1004,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   void _onPanEnd(BuildContext context, CanvasState state) {
     if (_currentPoints.isNotEmpty) {
+      final bounds = _boundsForPoints(_currentPoints);
       context.read<CanvasBloc>().add(
             StrokeAdded(
               points: _currentPoints,
@@ -917,6 +1014,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
               style: state.currentStyle,
             ),
           );
+      if (bounds != null && state.currentTool != CanvasTool.eraser) {
+        _stabilityDetector.registerStrokeBounds(bounds);
+      }
       _hasUnsavedChanges = true;
     }
     setState(() {
