@@ -86,6 +86,8 @@ class CanvasUndoStackUpdated extends CanvasEvent {
   List<Object?> get props => [undoStack, redoStack];
 }
 
+class StylusOnlyModeToggled extends CanvasEvent {}
+
 // ==================== Tool Enum ====================
 enum CanvasTool {
   pen, // 黑笔
@@ -155,6 +157,7 @@ class CanvasState extends Equatable {
   final double currentStrokeWidth;
   final CanvasTool currentTool;
   final bool isDrawing;
+  final bool stylusOnlyMode;
 
   const CanvasState({
     this.strokes = const [],
@@ -164,6 +167,7 @@ class CanvasState extends Equatable {
     this.currentStrokeWidth = 3.0,
     this.currentTool = CanvasTool.pen,
     this.isDrawing = false,
+    this.stylusOnlyMode = false,
   });
 
   bool get canUndo => undoStack.isNotEmpty;
@@ -177,6 +181,7 @@ class CanvasState extends Equatable {
     double? currentStrokeWidth,
     CanvasTool? currentTool,
     bool? isDrawing,
+    bool? stylusOnlyMode,
   }) {
     return CanvasState(
       strokes: strokes ?? this.strokes,
@@ -186,6 +191,7 @@ class CanvasState extends Equatable {
       currentStrokeWidth: currentStrokeWidth ?? this.currentStrokeWidth,
       currentTool: currentTool ?? this.currentTool,
       isDrawing: isDrawing ?? this.isDrawing,
+      stylusOnlyMode: stylusOnlyMode ?? this.stylusOnlyMode,
     );
   }
 
@@ -198,6 +204,7 @@ class CanvasState extends Equatable {
         currentStrokeWidth,
         currentTool,
         isDrawing,
+        stylusOnlyMode,
       ];
 }
 
@@ -213,6 +220,12 @@ class CanvasBloc extends Bloc<CanvasEvent, CanvasState> {
     on<CanvasStrokeWidthChanged>(_onStrokeWidthChanged);
     on<CanvasToolChanged>(_onToolChanged);
     on<StrokesLoaded>(_onStrokesLoaded);
+    on<StylusOnlyModeToggled>(_onStylusOnlyModeToggled);
+  }
+
+  void _onStylusOnlyModeToggled(
+      StylusOnlyModeToggled event, Emitter<CanvasState> emit) {
+    emit(state.copyWith(stylusOnlyMode: !state.stylusOnlyMode));
   }
 
   void _onInitialized(CanvasInitialized event, Emitter<CanvasState> emit) {

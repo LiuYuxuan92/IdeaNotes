@@ -59,10 +59,12 @@ class _SearchScreenState extends State<SearchScreen> {
         context.isLarge ? 32.0 : (context.isCompact ? 16.0 : 20.0);
     final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
 
-    return Scaffold(
-      body: SafeArea(
-        child: BlocBuilder<NoteListBloc, NoteListState>(
-          builder: (context, state) {
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        body: SafeArea(
+          child: BlocBuilder<NoteListBloc, NoteListState>(
+            builder: (context, state) {
             _syncControllerFromState(state.searchQuery);
             final isCompactQueryMode = _isCompactQueryMode(context, state);
             final topPadding = isCompactQueryMode
@@ -107,6 +109,7 @@ class _SearchScreenState extends State<SearchScreen> {
             );
           },
         ),
+      ),
       ),
     );
   }
@@ -437,6 +440,7 @@ class _SearchScreenState extends State<SearchScreen> {
           return NoteListItem(
             note: note,
             onTap: () {
+              FocusScope.of(context).unfocus();
               Navigator.push(
                 context,
                 MaterialPageRoute<void>(
@@ -470,6 +474,7 @@ class _SearchScreenState extends State<SearchScreen> {
               return NoteListItem(
                 note: note,
                 onTap: () {
+                  FocusScope.of(context).unfocus();
                   Navigator.push(
                     context,
                     MaterialPageRoute<void>(

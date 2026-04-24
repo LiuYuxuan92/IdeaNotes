@@ -78,6 +78,14 @@ class _CanvasScreenState extends State<CanvasScreen> {
   OcrEngine? _ocrEngine;
   OcrBannerState _ocrBannerState = OcrBannerState.idle;
 
+  // Palm rejection & multi-finger tracking
+  bool _stylusActive = false;
+  final Set<int> _activePointers = {};
+  final Map<int, Offset> _pointerDownPositions = {};
+  int _maxSimultaneousPointers = 0;
+  bool _didShowGestureHint = false;
+  final TransformationController _transformController = TransformationController();
+
   @override
   void initState() {
     super.initState();
@@ -143,6 +151,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   @override
   void dispose() {
+    _transformController.dispose();
     _canvasBloc.close();
     _ocrEngine?.dispose();
     unawaited(_handwritingRecognitionService.dispose());
@@ -223,6 +232,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
             ],
           ),
           body: SafeArea(
+            top: false,
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final isCompact = context.isCompact;
@@ -269,7 +279,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                       left: horizontal,
                       right: horizontal + canvasRightPadding,
                       bottom: showLargeResultDock ? 24 : 20,
-                      child: const CanvasToolbar(),
+                      child: CanvasToolbar(onFitToScreen: _resetCanvasTransform),
                     ),
                     if (showLargeResultDock)
                       Positioned(
@@ -433,7 +443,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     try {
       final previewService = widget.aiPreviewServiceOverride ??
           CanvasAiPreviewService(
-            engine: const DeepSeekTextUnderstandingEngine(),
+            engine: DeepSeekTextUnderstandingEngine(),
             correctionEngine: const DeepSeekOcrTextCorrectionEngine(),
           );
       result = await previewService.preview(
@@ -746,23 +756,157 @@ class _CanvasScreenState extends State<CanvasScreen> {
     );
   }
 
+  bool _shouldIgnorePointer(PointerEvent event, CanvasState state) {
+    if (event.kind == ui.PointerDeviceKind.stylus) return false;
+    if (state.stylusOnlyMode) return true;
+    if (_stylusActive) return true;
+    if (event.kind == ui.PointerDeviceKind.touch && event.size > 0.5) {
+      return true;
+    }
+    return false;
+  }
+
+  void _handlePointerDown(PointerEvent event, CanvasState state) {
+    _activePointers.add(event.pointer);
+    _pointerDownPositions[event.pointer] = event.localPosition;
+
+    if (_activePointers.length == 1) {
+      _maxSimultaneousPointers = 1;
+    } else {
+      _maxSimultaneousPointers = math.max(_maxSimultaneousPointers, _activePointers.length);
+    }
+
+    if (event.kind == ui.PointerDeviceKind.stylus) {
+      _stylusActive = true;
+    }
+
+    if (_shouldIgnorePointer(event, state)) return;
+
+    if (_activePointers.length == 1) {
+      if (_isResultPanelExpanded) {
+        setState(() => _isResultPanelExpanded = false);
+      }
+      setState(() {
+        _currentPoints = <Offset>[event.localPosition];
+      });
+    } else {
+      // Multi-finger detected: cancel current drawing stroke
+      if (_currentPoints.isNotEmpty) {
+        setState(() {
+          _currentPoints = <Offset>[];
+        });
+      }
+    }
+  }
+
+  void _handlePointerMove(PointerEvent event, CanvasState state) {
+    if (_shouldIgnorePointer(event, state)) return;
+    if (_activePointers.length != 1) return;
+
+    setState(() {
+      _currentPoints = <Offset>[..._currentPoints, event.localPosition];
+    });
+  }
+
+  void _handlePointerUp(PointerEvent event, BuildContext context, CanvasState state) {
+    final downPos = _pointerDownPositions.remove(event.pointer);
+    _activePointers.remove(event.pointer);
+
+    if (event.kind == ui.PointerDeviceKind.stylus && _activePointers.isEmpty) {
+      _stylusActive = false;
+    }
+
+    // When all fingers are lifted, check for multi-finger tap gestures
+    if (_activePointers.isEmpty && _pointerDownPositions.isEmpty) {
+      final wasMultiFinger = _maxSimultaneousPointers >= 2;
+      final noDisplacement = downPos != null &&
+          (event.localPosition - downPos).distance < 20;
+
+      if (wasMultiFinger && noDisplacement) {
+        if (_maxSimultaneousPointers == 2 && state.canUndo) {
+          HapticFeedback.selectionClick();
+          context.read<CanvasBloc>().add(StrokeUndone());
+          _hasUnsavedChanges = true;
+          if (!_didShowGestureHint) {
+            _didShowGestureHint = true;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('双指轻拍 = 撤销，三指轻拍 = 重做'),
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+        } else if (_maxSimultaneousPointers >= 3 && state.canRedo) {
+          HapticFeedback.selectionClick();
+          context.read<CanvasBloc>().add(StrokeRedone());
+          _hasUnsavedChanges = true;
+          if (!_didShowGestureHint) {
+            _didShowGestureHint = true;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('双指轻拍 = 撤销，三指轻拍 = 重做'),
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+        }
+        // Clear current points (drawing was already cancelled)
+        setState(() {
+          _currentPoints = <Offset>[];
+        });
+        _maxSimultaneousPointers = 0;
+        return;
+      }
+      _maxSimultaneousPointers = 0;
+    }
+
+    if (!_shouldIgnorePointer(event, state) && _currentPoints.isNotEmpty && _activePointers.isEmpty) {
+      context.read<CanvasBloc>().add(
+            StrokeAdded(
+              points: _currentPoints,
+              color: state.currentColor,
+              strokeWidth: state.currentStrokeWidth,
+              isEraser: state.currentTool == CanvasTool.eraser,
+            ),
+          );
+      _hasUnsavedChanges = true;
+      setState(() {
+        _currentPoints = <Offset>[];
+      });
+    }
+  }
+
+  void _resetCanvasTransform() {
+    _transformController.value = Matrix4.identity();
+  }
+
   Widget _buildCanvas() {
     return BlocBuilder<CanvasBloc, CanvasState>(
       builder: (context, state) {
-        return GestureDetector(
+        return Listener(
           behavior: HitTestBehavior.opaque,
-          onPanStart: _onPanStart,
-          onPanUpdate: _onPanUpdate,
-          onPanEnd: (_) => _onPanEnd(context, state),
-          child: CustomPaint(
-            painter: CanvasPainter(
-              strokes: state.strokes,
-              currentPoints: _currentPoints,
-              currentColor: state.currentColor,
-              currentStrokeWidth: state.currentStrokeWidth,
-              isErasing: state.currentTool == CanvasTool.eraser,
+          onPointerDown: (event) => _handlePointerDown(event, state),
+          onPointerMove: (event) => _handlePointerMove(event, state),
+          onPointerUp: (event) => _handlePointerUp(event, context, state),
+          child: InteractiveViewer(
+            transformationController: _transformController,
+            minScale: 0.5,
+            maxScale: 4.0,
+            panEnabled: false,
+            scaleEnabled: true,
+            child: Semantics(
+              label: '手写画布，${state.strokes.length}笔',
+              child: CustomPaint(
+                painter: CanvasPainter(
+                  strokes: state.strokes,
+                  currentPoints: _currentPoints,
+                  currentColor: state.currentColor,
+                  currentStrokeWidth: state.currentStrokeWidth,
+                  isErasing: state.currentTool == CanvasTool.eraser,
+                ),
+                size: Size.infinite,
+              ),
             ),
-            size: Size.infinite,
           ),
         );
       },
@@ -856,36 +1000,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
       ),
     );
     return result ?? false;
-  }
-
-  void _onPanStart(DragStartDetails details) {
-    if (_isResultPanelExpanded) setState(() => _isResultPanelExpanded = false);
-    setState(() {
-      _currentPoints = <Offset>[details.localPosition];
-    });
-  }
-
-  void _onPanUpdate(DragUpdateDetails details) {
-    setState(() {
-      _currentPoints = <Offset>[..._currentPoints, details.localPosition];
-    });
-  }
-
-  void _onPanEnd(BuildContext context, CanvasState state) {
-    if (_currentPoints.isNotEmpty) {
-      context.read<CanvasBloc>().add(
-            StrokeAdded(
-              points: _currentPoints,
-              color: state.currentColor,
-              strokeWidth: state.currentStrokeWidth,
-              isEraser: state.currentTool == CanvasTool.eraser,
-            ),
-          );
-      _hasUnsavedChanges = true;
-    }
-    setState(() {
-      _currentPoints = <Offset>[];
-    });
   }
 
   Future<Uint8List?> _captureCanvas({double pixelRatio = 2.0}) async {
@@ -1041,7 +1155,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       final saveService = widget.saveServiceOverride ??
           CanvasSaveService(
             databaseHelper: DatabaseHelper.instance,
-            textUnderstandingEngine: const DeepSeekTextUnderstandingEngine(),
+            textUnderstandingEngine: DeepSeekTextUnderstandingEngine(),
           );
       final canvasData = _canvasBloc.serializeCurrentStrokes();
       final snapshotBytes = widget.captureCanvasForSave != null
@@ -1066,6 +1180,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       try {
         context.read<NoteListBloc>().add(LoadNotes());
       } catch (_) {}
+      HapticFeedback.lightImpact();
       setState(() {
         _hasUnsavedChanges = false;
         _isResultPanelExpanded = false;

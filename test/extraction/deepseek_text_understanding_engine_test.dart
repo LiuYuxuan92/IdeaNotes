@@ -121,7 +121,7 @@ void main() {
     });
 
     test('api key 为空时会标记为不可用', () async {
-      const engine = DeepSeekTextUnderstandingEngine(apiKey: '   ');
+      final engine = DeepSeekTextUnderstandingEngine(apiKey: '   ');
       expect(await engine.isAvailable(), isFalse);
     });
   });

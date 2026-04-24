@@ -37,6 +37,18 @@ class CreateNote extends NoteListEvent {}
 
 class RefreshNotes extends NoteListEvent {}
 
+class RestoreNote extends NoteListEvent {}
+
+class RenameNote extends NoteListEvent {
+  final String noteId;
+  final String newTitle;
+
+  const RenameNote({required this.noteId, required this.newTitle});
+
+  @override
+  List<Object?> get props => [noteId, newTitle];
+}
+
 // ==================== State ====================
 enum NoteListStatus { initial, loading, loaded, error }
 
@@ -79,6 +91,9 @@ class NoteListState extends Equatable {
 // ==================== Bloc ====================
 class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
   final DatabaseHelper databaseHelper;
+  Note? _lastDeletedNote;
+
+  Note? get lastDeletedNote => _lastDeletedNote;
 
   NoteListBloc({required this.databaseHelper}) : super(const NoteListState()) {
     on<LoadNotes>(_onLoadNotes);
@@ -86,6 +101,8 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
     on<DeleteNote>(_onDeleteNote);
     on<CreateNote>(_onCreateNote);
     on<RefreshNotes>(_onRefreshNotes);
+    on<RestoreNote>(_onRestoreNote);
+    on<RenameNote>(_onRenameNote);
   }
 
   Future<void> _onLoadNotes(
@@ -130,6 +147,11 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
   Future<void> _onDeleteNote(
       DeleteNote event, Emitter<NoteListState> emit) async {
     try {
+      // Cache deleted note for undo
+      _lastDeletedNote = state.notes.firstWhere(
+        (n) => n.id == event.noteId,
+        orElse: () => Note(id: event.noteId, createdAt: DateTime.now(), updatedAt: DateTime.now()),
+      );
       try {
         await ImageStorage.deleteNoteImages(event.noteId);
       } catch (_) {
@@ -150,6 +172,49 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
     } catch (e) {
       emit(state.copyWith(
         errorMessage: '删除失败: ${e.toString()}',
+      ));
+    }
+  }
+
+  Future<void> _onRestoreNote(
+      RestoreNote event, Emitter<NoteListState> emit) async {
+    if (_lastDeletedNote == null) return;
+    try {
+      await databaseHelper.insertNote(_lastDeletedNote!.toMap());
+      final restored = _lastDeletedNote!;
+      _lastDeletedNote = null;
+
+      final updatedNotes = [restored, ...state.notes];
+      updatedNotes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+      emit(state.copyWith(
+        notes: updatedNotes,
+        filteredNotes: _filterNotes(
+          notes: updatedNotes,
+          query: state.searchQuery,
+        ),
+      ));
+    } catch (e) {
+      emit(state.copyWith(
+        errorMessage: '恢复失败: ${e.toString()}',
+      ));
+    }
+  }
+
+  Future<void> _onRenameNote(
+      RenameNote event, Emitter<NoteListState> emit) async {
+    try {
+      final db = await databaseHelper.database;
+      await db.update(
+        'notes',
+        {'recognized_text': event.newTitle, 'updated_at': DateTime.now().toIso8601String()},
+        where: 'id = ?',
+        whereArgs: [event.noteId],
+      );
+      add(LoadNotes());
+    } catch (e) {
+      emit(state.copyWith(
+        errorMessage: '重命名失败: ${e.toString()}',
       ));
     }
   }

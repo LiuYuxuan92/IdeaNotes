@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../app/design_system.dart';
 import 'bloc/canvas_bloc.dart';
 
 class CanvasToolbar extends StatelessWidget {
-  const CanvasToolbar({super.key});
+  final VoidCallback? onFitToScreen;
+
+  const CanvasToolbar({super.key, this.onFitToScreen});
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +66,6 @@ class CanvasToolbar extends StatelessWidget {
             ),
             boxShadow: AppShadows.floating,
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
@@ -98,6 +100,25 @@ class CanvasToolbar extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     _CompactActionButton(
+                      icon: state.stylusOnlyMode
+                          ? Icons.draw_rounded
+                          : Icons.touch_app_rounded,
+                      label: state.stylusOnlyMode ? '仅触控笔' : '手指+笔',
+                      onTap: () {
+                        HapticFeedback.selectionClick(); // Add haptic feedback
+                        context.read<CanvasBloc>().add(StylusOnlyModeToggled());
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    if (onFitToScreen != null) ...[
+                      _CompactActionButton(
+                        icon: Icons.fit_screen_rounded,
+                        label: '适应屏幕',
+                        onTap: onFitToScreen,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    _CompactActionButton(
                       icon: Icons.delete_sweep_rounded,
                       label: '清空画布',
                       isDanger: true,
@@ -114,9 +135,12 @@ class CanvasToolbar extends StatelessWidget {
                         _ToolPill(
                           spec: tools[i],
                           isSelected: state.currentTool == tools[i].tool,
-                          onTap: () => context
-                              .read<CanvasBloc>()
-                              .add(CanvasToolChanged(tools[i].tool)),
+                          onTap: () {
+                            HapticFeedback.selectionClick(); // Add haptic feedback
+                            context
+                                .read<CanvasBloc>()
+                                .add(CanvasToolChanged(tools[i].tool));
+                          },
                         ),
                         if (i != tools.length - 1) const SizedBox(width: 10),
                       ],
@@ -323,30 +347,33 @@ class _CompactActionButton extends StatelessWidget {
       child: InkWell(
         onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: isCompact ? 10 : 12,
-            vertical: isCompact ? 8 : 10,
-          ),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: foreground),
-              if (context.isMedium || context.isLarge) ...[
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: foreground,
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48), // Add minimum size
+          child: Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: isCompact ? 10 : 12,
+              vertical: isCompact ? 8 : 10,
+            ),
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 18, color: foreground),
+                if (context.isMedium || context.isLarge) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: foreground,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

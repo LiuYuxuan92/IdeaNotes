@@ -1,31 +1,38 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../config/app_secrets.dart';
 import 'deepseek_api_defaults.dart';
 import 'extraction_models.dart';
 import 'text_understanding_engine.dart';
 
 class DeepSeekTextUnderstandingEngine implements TextUnderstandingEngine {
   final String endpoint;
-  final String apiKey;
+  final String? apiKey;
   final String model;
   final Duration requestTimeout;
   final HttpClient Function()? httpClientFactory;
 
-  const DeepSeekTextUnderstandingEngine({
+  DeepSeekTextUnderstandingEngine({
     this.endpoint = DeepSeekApiDefaults.endpoint,
-    this.apiKey = DeepSeekApiDefaults.apiKey,
+    String? apiKey,
     this.model = DeepSeekApiDefaults.model,
     this.requestTimeout = const Duration(seconds: 45),
     this.httpClientFactory,
-  });
+  }) : apiKey = apiKey ?? const AppSecrets().resolvedDeepSeekApiKey;
 
   @override
   String get engineName => 'deepseek';
 
+  Future<String?> _resolveApiKey() async {
+    final runtimeKey = await AppSecrets.resolveDeepSeekApiKey();
+    return runtimeKey ?? apiKey;
+  }
+
   @override
   Future<bool> isAvailable() async {
-    if (apiKey.trim().isEmpty) {
+    final key = await _resolveApiKey();
+    if (key == null || key.trim().isEmpty) {
       return false;
     }
     return !Platform.environment.containsKey('FLUTTER_TEST');
@@ -35,6 +42,13 @@ class DeepSeekTextUnderstandingEngine implements TextUnderstandingEngine {
   Future<TextUnderstandingResult> extractStructuredData(
     ExtractionRequest request,
   ) async {
+    final resolvedApiKey = await _resolveApiKey();
+    if (resolvedApiKey == null || resolvedApiKey.trim().isEmpty) {
+      return const TextUnderstandingResult.failure(
+        message: 'Missing DEEPSEEK_API_KEY，请在设置页输入 API Key',
+      );
+    }
+
     final stopwatch = Stopwatch()..start();
     final client = httpClientFactory?.call() ?? HttpClient();
     client.connectionTimeout = requestTimeout;
@@ -45,7 +59,7 @@ class DeepSeekTextUnderstandingEngine implements TextUnderstandingEngine {
       httpRequest.headers.contentType = ContentType.json;
       httpRequest.headers.set(
         HttpHeaders.authorizationHeader,
-        'Bearer $apiKey',
+        'Bearer $resolvedApiKey',
       );
       httpRequest.add(
         utf8.encode(

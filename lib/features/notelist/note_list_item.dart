@@ -69,14 +69,18 @@ class NoteListItem extends StatelessWidget {
         backgroundColor: Colors.white,
         border: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
         boxShadow: AppShadows.soft,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(24),
-          child: _GridCardBody(
-            note: note,
-            summary: _summary,
-            onDelete: onDelete,
-            onConfirmDelete: () => _confirmDelete(context),
+        child: Semantics(
+          label: '笔记：${_summary.isNotEmpty ? _summary : '无内容'}',
+          button: true,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(24),
+            child: _GridCardBody(
+              note: note,
+              summary: _summary,
+              onDelete: onDelete,
+              onConfirmDelete: () => _confirmDelete(context),
+            ),
           ),
         ),
       );
@@ -104,15 +108,19 @@ class NoteListItem extends StatelessWidget {
               Expanded(
                 child: Material(
                   color: Colors.transparent,
-                  child: InkWell(
-                    onTap: onTap,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: _ListCardBody(
-                        note: note,
-                        summary: _summary,
-                        onDelete: onDelete,
-                        onConfirmDelete: () => _confirmDelete(context),
+                  child: Semantics(
+                    label: '笔记：${_summary.isNotEmpty ? _summary : '无内容'}',
+                    button: true,
+                    child: InkWell(
+                      onTap: onTap,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: _ListCardBody(
+                          note: note,
+                          summary: _summary,
+                          onDelete: onDelete,
+                          onConfirmDelete: () => _confirmDelete(context),
+                        ),
                       ),
                     ),
                   ),
@@ -380,13 +388,20 @@ class _NoteThumbnail extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: borderRadius,
-        child: note.snapshotImagePath != null
-            ? Image.file(
-                File(note.snapshotImagePath!),
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const _ThumbnailPlaceholder(),
-              )
-            : const _ThumbnailPlaceholder(),
+        child: Semantics(
+          label: note.snapshotImagePath != null ? '\u7b14\u8bb0\u7f29\u7565\u56fe' : '\u7a7a\u7b14\u8bb0\u5360\u4f4d\u56fe',
+          image: note.snapshotImagePath != null,
+          child: note.snapshotImagePath != null
+              ? Image(
+                  image: ResizeImage(
+                    FileImage(File(note.snapshotImagePath!)),
+                    width: 256,
+                  ),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const _ThumbnailPlaceholder(),
+                )
+              : const _ThumbnailPlaceholder(),
+        ),
       ),
     );
   }

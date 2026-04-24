@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../config/app_secrets.dart';
 import 'deepseek_api_defaults.dart';
 import 'ocr_text_correction_engine.dart';
 
@@ -22,9 +23,15 @@ class DeepSeekOcrTextCorrectionEngine implements OcrTextCorrectionEngine {
   @override
   String get engineName => 'deepseek';
 
+  Future<String> _resolveApiKey() async {
+    final runtimeKey = await AppSecrets.resolveDeepSeekApiKey();
+    return runtimeKey ?? apiKey;
+  }
+
   @override
   Future<bool> isAvailable() async {
-    if (apiKey.trim().isEmpty) {
+    final key = await _resolveApiKey();
+    if (key.trim().isEmpty) {
       return false;
     }
     return !Platform.environment.containsKey('FLUTTER_TEST');
@@ -34,6 +41,7 @@ class DeepSeekOcrTextCorrectionEngine implements OcrTextCorrectionEngine {
   Future<OcrTextCorrectionResult> correctText(
     OcrTextCorrectionRequest request,
   ) async {
+    final resolvedKey = await _resolveApiKey();
     final stopwatch = Stopwatch()..start();
     final client = httpClientFactory?.call() ?? HttpClient();
     client.connectionTimeout = requestTimeout;
@@ -44,7 +52,7 @@ class DeepSeekOcrTextCorrectionEngine implements OcrTextCorrectionEngine {
       httpRequest.headers.contentType = ContentType.json;
       httpRequest.headers.set(
         HttpHeaders.authorizationHeader,
-        'Bearer $apiKey',
+        'Bearer $resolvedKey',
       );
       httpRequest.add(utf8.encode(jsonEncode(_buildPayload(request))));
 

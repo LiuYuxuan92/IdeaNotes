@@ -1,0 +1,23 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Notepad page -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M30,22h48c2.2,0 4,1.8 4,4v56c0,2.2 -1.8,4 -4,4H30c-2.2,0 -4,-1.8 -4,-4V26C26,23.8 27.8,22 30,22z" />
+    <!-- Pen stroke -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,42c4,-6 10,-8 18,-4s12,8 14,14"
+        android:strokeWidth="3"
+        android:strokeColor="#FFFFFF"
+        android:fillAlpha="0" />
+    <!-- Lines on page -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:pathData="M36,52h36M36,58h28M36,64h32"
+        android:fillAlpha="0" />
+</vector>

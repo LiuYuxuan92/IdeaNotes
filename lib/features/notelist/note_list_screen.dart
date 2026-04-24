@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 
 import '../../app/design_system.dart';
 import '../../core/models/note.dart';
@@ -9,6 +11,7 @@ import '../canvas/canvas_screen.dart';
 import '../notedetail/note_detail_screen.dart';
 import '../records/records_hub_screen.dart';
 import '../search/search_screen.dart';
+import '../settings/settings_screen.dart';
 import 'bloc/note_list_bloc.dart';
 import 'note_list_item.dart';
 
@@ -45,7 +48,10 @@ class _NoteListScreenState extends State<NoteListScreen> {
 
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _createNewNote,
+        onPressed: () {
+          HapticFeedback.lightImpact();
+          _createNewNote();
+        },
         icon: const Icon(Icons.add_rounded),
         label: Text(context.isCompact ? '记一页' : '新建笔记'),
         tooltip: '新建笔记',
@@ -205,6 +211,12 @@ class _NoteListScreenState extends State<NoteListScreen> {
                       icon: Icons.search_rounded,
                       tooltip: '打开搜索页',
                       onTap: _openSearchCenter,
+                    ),
+                    const SizedBox(height: 8),
+                    _GlassIconButton(
+                      icon: Icons.settings_rounded,
+                      tooltip: '设置',
+                      onTap: _openSettings,
                     ),
                   ],
                 ),
@@ -453,10 +465,29 @@ class _NoteListScreenState extends State<NoteListScreen> {
           itemCount: state.filteredNotes.length,
           itemBuilder: (context, index) {
             final note = state.filteredNotes[index];
-            return NoteListItem(
-              note: note,
-              onTap: () => _openNoteDetail(note),
-              onDelete: () => _deleteNote(note.id),
+            return Slidable(
+              key: ValueKey(note.id),
+              endActionPane: ActionPane(
+                motion: const BehindMotion(),
+                children: [
+                  SlidableAction(
+                    onPressed: (_) => _deleteNote(note.id),
+                    backgroundColor: AppColors.error,
+                    foregroundColor: Colors.white,
+                    icon: Icons.delete_rounded,
+                    label: '删除',
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ],
+              ),
+              child: GestureDetector(
+                onLongPress: () => _showNoteActionSheet(note),
+                child: NoteListItem(
+                  note: note,
+                  onTap: () => _openNoteDetail(note),
+                  onDelete: () => _deleteNote(note.id),
+                ),
+              ),
             );
           },
           separatorBuilder: (_, __) => const SizedBox(height: 0),
@@ -520,6 +551,13 @@ class _NoteListScreenState extends State<NoteListScreen> {
     );
   }
 
+  void _openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (context) => const SettingsScreen()),
+    );
+  }
+
   void _openRecordsHub(RecordsHubTab tab) {
     Navigator.push(
       context,
@@ -562,9 +600,96 @@ class _NoteListScreenState extends State<NoteListScreen> {
   }
 
   void _deleteNote(String noteId) {
+    HapticFeedback.mediumImpact();
     context.read<NoteListBloc>().add(DeleteNote(noteId));
+    ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('这条笔记已删除。')),
+      SnackBar(
+        content: const Text('这条笔记已删除。'),
+        action: SnackBarAction(
+          label: '撤销',
+          onPressed: () {
+            HapticFeedback.mediumImpact();
+            context.read<NoteListBloc>().add(RestoreNote());
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showNoteActionSheet(Note note) {
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit_rounded),
+                title: const Text('重命名'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _showRenameDialog(note);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_rounded, color: AppColors.error),
+                title: const Text('删除', style: TextStyle(color: AppColors.error)),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _deleteNote(note.id);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showRenameDialog(Note note) {
+    final controller = TextEditingController(
+      text: note.recognizedText?.split('\n').first ?? '',
+    );
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('重命名笔记'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(hintText: '输入新名称'),
+          onSubmitted: (value) {
+            if (value.trim().isNotEmpty) {
+              context.read<NoteListBloc>().add(
+                    RenameNote(noteId: note.id, newTitle: value.trim()),
+                  );
+            }
+            Navigator.pop(dialogContext);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) {
+                context.read<NoteListBloc>().add(
+                      RenameNote(noteId: note.id, newTitle: value),
+                    );
+              }
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
     );
   }
 }

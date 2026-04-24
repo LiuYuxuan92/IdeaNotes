@@ -19,8 +19,18 @@ class IdeaNotesApp extends StatelessWidget {
         title: 'IdeaNotes',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
-        darkTheme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
         themeMode: ThemeMode.system,
+        builder: (context, child) {
+          final mq = MediaQuery.of(context);
+          final clampedScale = mq.textScaler.scale(1).clamp(0.85, 1.3);
+          return MediaQuery(
+            data: mq.copyWith(
+              textScaler: TextScaler.linear(clampedScale),
+            ),
+            child: child!,
+          );
+        },
         home: const NoteListScreen(),
       ),
     );

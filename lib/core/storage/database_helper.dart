@@ -114,13 +114,19 @@ class DatabaseHelper {
     );
   }
 
-  Future<List<Map<String, dynamic>>> searchNotes(String query) async {
+  Future<List<Map<String, dynamic>>> searchNotes(
+    String query, {
+    int limit = 30,
+    int offset = 0,
+  }) async {
     final db = await database;
     return await db.query(
       'notes',
       where: 'recognized_text LIKE ?',
       whereArgs: ['%$query%'],
       orderBy: 'updated_at DESC',
+      limit: limit,
+      offset: offset,
     );
   }
 
