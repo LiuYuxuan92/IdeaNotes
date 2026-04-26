@@ -49,13 +49,20 @@ dependencies:
   
   # Share & Export
   share_plus: ^7.2.1
-  screenshot: ^2.1.0
+  screenshot: ^3.0.0
   pdf: ^3.10.4
   printing: ^5.11.1
   
   # Path drawing for handwriting
   path_drawing: ^1.0.1
   speech_to_text: ^7.3.0
+
+  # Local notifications (weekly review)
+  flutter_local_notifications: ^17.2.4
+  timezone: ^0.9.4
+
+  # Receive shared text from other apps (Share Target)
+  receive_sharing_intent: ^1.8.0
 
 dev_dependencies:
   sqlite3: ^2.9.4
