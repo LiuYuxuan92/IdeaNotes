@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../app/design_system.dart';
 import '../../core/config/api_key_storage.dart';
+import '../../core/notifications/weekly_review_notifier.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -49,6 +50,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('API Key 已保存')),
+    );
+  }
+
+  Future<void> _enableWeeklyReview() async {
+    final notifier = WeeklyReviewNotifier();
+    final granted = await notifier.requestPermissions();
+    if (!mounted) return;
+    if (!granted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未授权通知权限，请到系统设置开启。')),
+      );
+      return;
+    }
+    await notifier.scheduleNextWeeklyReview();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已安排下周日 20:00 推送本周回顾。')),
+    );
+  }
+
+  Future<void> _previewWeeklyReview() async {
+    final notifier = WeeklyReviewNotifier();
+    final granted = await notifier.requestPermissions();
+    if (!mounted) return;
+    if (!granted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未授权通知权限，请到系统设置开启。')),
+      );
+      return;
+    }
+    await notifier.showNow();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已发送一条试看通知。')),
+    );
+  }
+
+  Future<void> _disableWeeklyReview() async {
+    await WeeklyReviewNotifier().cancel();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已关闭本周回顾推送。')),
     );
   }
 
@@ -277,7 +320,99 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
 
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
+
+                  // Weekly review card
+                  AppSurface(
+                    padding: const EdgeInsets.all(20),
+                    radius: 20,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: AppColors.aiAccent
+                                    .withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.notifications_active_rounded,
+                                color: AppColors.aiAccent,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '本周回顾推送',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '每周日晚 8 点弹出一条本周记录摘要，含花费、待办与笔数。',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: AppColors.textSecondary,
+                                          height: 1.5,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton.tonalIcon(
+                                onPressed: _enableWeeklyReview,
+                                icon: const Icon(
+                                    Icons.event_repeat_rounded,
+                                    size: 18),
+                                label: const Text('开启 / 重排'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _previewWeeklyReview,
+                                icon: const Icon(
+                                    Icons.notifications_outlined,
+                                    size: 18),
+                                label: const Text('立即试一下'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: _disableWeeklyReview,
+                            icon: const Icon(Icons.alarm_off_rounded, size: 16),
+                            label: const Text('关闭推送'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
 
                   // Info section
                   AppSurface(
