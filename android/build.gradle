@@ -15,6 +15,20 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+subprojects { subproject ->
+    tasks.configureEach { task ->
+        if (task.hasProperty("kotlinOptions")) {
+            def kotlinJvmTarget = "17"
+            if (subproject.name in ["receive_sharing_intent", "share_plus"]) {
+                kotlinJvmTarget = "1.8"
+            } else if (subproject.name == "speech_to_text") {
+                kotlinJvmTarget = "11"
+            }
+            task.kotlinOptions.jvmTarget = kotlinJvmTarget
+        }
+    }
+}
+
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
