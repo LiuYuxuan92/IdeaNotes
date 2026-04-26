@@ -13,6 +13,7 @@ import '../../core/storage/entry_repository.dart';
 import '../../core/storage/image_storage.dart';
 import '../canvas/canvas_screen.dart';
 import '../../shared/widgets/entry_row.dart';
+import 'widgets/entry_share_card.dart';
 
 class NoteDetailScreen extends StatefulWidget {
   final Note note;
@@ -1622,6 +1623,21 @@ class _StructuredEntryRow extends StatelessWidget {
                         ),
                       ),
                     ],
+                    const SizedBox(width: 4),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () =>
+                          EntryShareCardExporter().shareEntry(context, entry),
+                      child: const Padding(
+                        padding: EdgeInsets.all(6),
+                        child: Icon(
+                          Icons.ios_share_rounded,
+                          size: 18,
+                          color: AppColors.textSecondary,
+                          semanticLabel: '分享这条记录',
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 if (metadata.isNotEmpty) ...[
