@@ -19,16 +19,18 @@ class StrokeAdded extends CanvasEvent {
   final Color color;
   final double strokeWidth;
   final bool isEraser;
+  final List<double>? pressures;
 
   const StrokeAdded({
     required this.points,
     required this.color,
     required this.strokeWidth,
     this.isEraser = false,
+    this.pressures,
   });
 
   @override
-  List<Object?> get props => [points, color, strokeWidth, isEraser];
+  List<Object?> get props => [points, color, strokeWidth, isEraser, pressures];
 }
 
 class StrokeUndone extends CanvasEvent {}
@@ -104,11 +106,16 @@ class DrawingStroke extends Equatable {
   final double strokeWidth;
   final bool isEraser;
 
+  /// 每个点对应的压力值（0.0-1.0），与 [points] 同长。
+  /// 旧数据可能为空，渲染时按 1.0 处理。
+  final List<double>? pressures;
+
   const DrawingStroke({
     required this.points,
     required this.color,
     required this.strokeWidth,
     this.isEraser = false,
+    this.pressures,
   });
 
   Map<String, dynamic> toJson() => {
@@ -116,9 +123,11 @@ class DrawingStroke extends Equatable {
         'color': color.toARGB32(),
         'strokeWidth': strokeWidth,
         'isEraser': isEraser,
+        if (pressures != null) 'pressures': pressures,
       };
 
   factory DrawingStroke.fromJson(Map<String, dynamic> json) {
+    final rawPressures = json['pressures'];
     return DrawingStroke(
       points: (json['points'] as List)
           .map((p) =>
@@ -127,6 +136,9 @@ class DrawingStroke extends Equatable {
       color: Color(json['color'] as int),
       strokeWidth: (json['strokeWidth'] as num).toDouble(),
       isEraser: json['isEraser'] as bool? ?? false,
+      pressures: rawPressures is List
+          ? rawPressures.map((e) => (e as num).toDouble()).toList()
+          : null,
     );
   }
 
@@ -145,7 +157,7 @@ class DrawingStroke extends Equatable {
   }
 
   @override
-  List<Object?> get props => [points, color, strokeWidth, isEraser];
+  List<Object?> get props => [points, color, strokeWidth, isEraser, pressures];
 }
 
 // ==================== State ====================
@@ -238,6 +250,7 @@ class CanvasBloc extends Bloc<CanvasEvent, CanvasState> {
       color: event.color,
       strokeWidth: event.strokeWidth,
       isEraser: event.isEraser,
+      pressures: event.pressures,
     );
 
     emit(state.copyWith(

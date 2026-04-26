@@ -138,9 +138,13 @@ class HandwritingRecognitionService {
       3,
       (maxWidth, stroke) => math.max(maxWidth, stroke.strokeWidth),
     );
-    final padding = math.max(maxStrokeWidth * 6, 28);
-    final sourceWidth = math.max(bounds.width + padding * 2, 160);
-    final sourceHeight = math.max(bounds.height + padding * 2, 160);
+
+    final strokePadding = math.max(maxStrokeWidth * 4, 18);
+    final canvasPadding = math.max(maxStrokeWidth * 5, 32);
+    final contentWidth = math.max(bounds.width, 1.0);
+    final contentHeight = math.max(bounds.height, 1.0);
+    final sourceWidth = contentWidth + canvasPadding * 2;
+    final sourceHeight = contentHeight + canvasPadding * 2;
     final longEdge = math.max(sourceWidth, sourceHeight);
     final targetLongEdge = writingArea.shortestSide < 480 ? 960.0 : 1280.0;
     final scale = longEdge <= 0 ? 1.0 : targetLongEdge / longEdge;
@@ -160,8 +164,8 @@ class HandwritingRecognitionService {
         }
         normalizedStroke.points.add(
           StrokePoint(
-            x: (point.dx - bounds.left + padding) * scale,
-            y: (point.dy - bounds.top + padding) * scale,
+            x: (point.dx - bounds.left + canvasPadding) * scale,
+            y: (point.dy - bounds.top + canvasPadding) * scale,
             t: timestamp,
           ),
         );
@@ -174,16 +178,16 @@ class HandwritingRecognitionService {
 
     return _NormalizedInk(
       ink: ink,
-      width: sourceWidth * scale,
-      height: sourceHeight * scale,
+      width: sourceWidth * scale + strokePadding,
+      height: sourceHeight * scale + strokePadding,
     );
   }
 
   Rect _strokeBounds(List<DrawingStroke> strokes) {
     var minX = double.infinity;
     var minY = double.infinity;
-    var maxX = 0.0;
-    var maxY = 0.0;
+    var maxX = -double.infinity;
+    var maxY = -double.infinity;
 
     for (final stroke in strokes) {
       for (final point in stroke.points) {
@@ -194,11 +198,13 @@ class HandwritingRecognitionService {
       }
     }
 
-    if (!minX.isFinite || !minY.isFinite) {
+    if (!minX.isFinite || !minY.isFinite || !maxX.isFinite || !maxY.isFinite) {
       return const Rect.fromLTWH(0, 0, 1, 1);
     }
 
-    return Rect.fromLTRB(minX, minY, maxX, maxY);
+    final width = math.max(maxX - minX, 1.0);
+    final height = math.max(maxY - minY, 1.0);
+    return Rect.fromLTWH(minX, minY, width, height);
   }
 
   _RecognitionAttempt? _selectBestAttempt(List<_RecognitionAttempt> attempts) {
@@ -218,7 +224,7 @@ class HandwritingRecognitionService {
         return leftAscii ? -1 : 1;
       }
 
-      final scoreCompare = left.score.compareTo(right.score);
+      final scoreCompare = right.score.compareTo(left.score);
       if (scoreCompare != 0) return scoreCompare;
 
       return right.text.length.compareTo(left.text.length);

@@ -6,9 +6,22 @@ import '../../app/design_system.dart';
 import 'bloc/canvas_bloc.dart';
 
 class CanvasToolbar extends StatelessWidget {
+  /// 复位视图（100%、回 World 原点）。
   final VoidCallback? onFitToScreen;
 
-  const CanvasToolbar({super.key, this.onFitToScreen});
+  /// 把所有笔迹适配到当前视口（无限画布场景）。
+  final VoidCallback? onFitToInk;
+
+  /// 当前 viewport transform，用于显示缩放百分比。
+  /// 传 null 时不显示百分比。
+  final TransformationController? viewTransform;
+
+  const CanvasToolbar({
+    super.key,
+    this.onFitToScreen,
+    this.onFitToInk,
+    this.viewTransform,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -110,10 +123,26 @@ class CanvasToolbar extends StatelessWidget {
                       },
                     ),
                     const SizedBox(width: 8),
+                    if (viewTransform != null) ...[
+                      _ZoomBadge(
+                        controller: viewTransform!,
+                        onTap: onFitToScreen,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (onFitToInk != null) ...[
+                      _CompactActionButton(
+                        icon: Icons.center_focus_strong_rounded,
+                        label: '适配笔迹',
+                        enabled: state.strokes.isNotEmpty,
+                        onTap: state.strokes.isNotEmpty ? onFitToInk : null,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     if (onFitToScreen != null) ...[
                       _CompactActionButton(
                         icon: Icons.fit_screen_rounded,
-                        label: '适应屏幕',
+                        label: '复位视图',
                         onTap: onFitToScreen,
                       ),
                       const SizedBox(width: 8),
@@ -393,4 +422,66 @@ class _ToolSpec {
     required this.label,
     required this.swatch,
   });
+}
+
+/// 显示当前 viewport 缩放百分比的小徽标，点击复位视图。
+class _ZoomBadge extends StatelessWidget {
+  final TransformationController controller;
+  final VoidCallback? onTap;
+
+  const _ZoomBadge({required this.controller, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final isCompact = context.isCompact;
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final scale = controller.value.storage[0];
+        final percent = (scale * 100).round().clamp(1, 9999);
+        return Tooltip(
+          message: '缩放 $percent%（点击复位）',
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(18),
+            child: ConstrainedBox(
+              constraints:
+                  const BoxConstraints(minWidth: 48, minHeight: 48),
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isCompact ? 10 : 12,
+                  vertical: isCompact ? 8 : 10,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF1F4),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.zoom_in_rounded,
+                      size: 18,
+                      color: AppColors.inkBlue,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '$percent%',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(
+                            color: AppColors.inkBlue,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }

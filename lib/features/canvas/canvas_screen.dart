@@ -3,11 +3,11 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:image/image.dart' as img;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../app/design_system.dart';
@@ -25,6 +25,8 @@ import 'canvas_toolbar.dart';
 import 'services/canvas_ai_preview_service.dart';
 import 'services/handwriting_recognition_service.dart';
 import 'services/canvas_save_service.dart';
+import 'services/local_rule_fallback_service.dart';
+import 'services/offscreen_canvas_renderer.dart';
 import 'services/voice_recognition_service.dart';
 import 'widgets/canvas_painter.dart';
 import 'widgets/voice_capture_sheet.dart';
@@ -41,6 +43,9 @@ class CanvasScreen extends StatefulWidget {
   final CanvasAiPreviewService? aiPreviewServiceOverride;
   final VoiceRecognitionService? voiceRecognitionServiceOverride;
   final bool openVoiceOnStart;
+  /// 预填识别文本（例如从系统分享入口进入时，其他 App 传过来的文本）。
+  /// 填了会直接作为 OCR 结果呈现。
+  final String? initialOcrText;
 
   const CanvasScreen({
     super.key,
@@ -55,6 +60,7 @@ class CanvasScreen extends StatefulWidget {
     this.aiPreviewServiceOverride,
     this.voiceRecognitionServiceOverride,
     this.openVoiceOnStart = false,
+    this.initialOcrText,
   });
 
   @override
@@ -64,6 +70,8 @@ class CanvasScreen extends StatefulWidget {
 class _CanvasScreenState extends State<CanvasScreen> {
   final GlobalKey _canvasRepaintKey = GlobalKey();
   List<Offset> _currentPoints = <Offset>[];
+  List<double> _currentPressures = <double>[];
+  double _lastPointerPressure = 1.0;
   late final CanvasBloc _canvasBloc;
   late final HandwritingRecognitionService _handwritingRecognitionService;
 
@@ -74,6 +82,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
   bool _isPreviewingAi = false;
   bool _isResultPanelExpanded = false;
   bool _hasUnsavedChanges = false;
+  // ── Autosave ──
+  Timer? _autosaveTimer;
+  bool _isAutoSaving = false;
+  DateTime? _lastSavedAt;
+  static const Duration _autosaveDebounce = Duration(seconds: 2);
   Note? _existingNote;
   OcrEngine? _ocrEngine;
   OcrBannerState _ocrBannerState = OcrBannerState.idle;
@@ -86,6 +99,23 @@ class _CanvasScreenState extends State<CanvasScreen> {
   bool _didShowGestureHint = false;
   final TransformationController _transformController = TransformationController();
 
+  // ── 手势状态（用于 ScaleGestureRecognizer 区分画/拖/缩放） ──
+  /// 当前是否正在画一笔（单指接触且未被多指打断）
+  bool _isDrawing = false;
+  /// 二指手势开始时的视图 transform
+  Matrix4 _gestureStartTransform = Matrix4.identity();
+  /// 二指开始时焦点对应的 World 坐标（缩放/平移的锚点）
+  Offset _gestureStartWorldAnchor = Offset.zero;
+  /// 缩放钳制范围
+  static const double _minScale = 0.25;
+  static const double _maxScale = 4.0;
+
+  /// 当前画布视口尺寸（由 LayoutBuilder 写入）
+  Size? _canvasViewportSize;
+
+  /// 老笔记加载后需要在下一次 layout 自动居中
+  bool _pendingFitToInkOnLayout = false;
+
   @override
   void initState() {
     super.initState();
@@ -95,13 +125,39 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (widget.noteId != null) {
       _loadExistingNote();
     }
+    final initial = widget.initialOcrText?.trim();
+    if (initial != null && initial.isNotEmpty && widget.noteId == null) {
+      _ocrResult = initial;
+      _ocrBannerState = OcrBannerState.success;
+      _ocrHelperText = '从其他 App 分享过来的文本，已直接放入识别结果。';
+      _hasUnsavedChanges = true;
+      _isResultPanelExpanded = true;
+    }
     if (widget.openVoiceOnStart && widget.noteId == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         unawaited(_openVoiceCapture());
       });
     }
+    // 首次进入新笔记 → 提示无限画布手势（per-session）
+    if (widget.noteId == null && !_didShowInfiniteCanvasHint) {
+      _didShowInfiniteCanvasHint = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('提示：单指写字、二指拖动 / 捏合缩放；写到屏幕外也不会丢'),
+            duration: Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      });
+    }
   }
+
+  /// session 级标记：本次进程内是否已经展示过"无限画布手势"提示。
+  /// 这是 static，所以多次打开 CanvasScreen 都只展示一次。
+  static bool _didShowInfiniteCanvasHint = false;
 
   Future<void> _initOcrEngine() async {
     try {
@@ -146,16 +202,73 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
     if (note.canvasData != null && note.canvasData!.isNotEmpty) {
       _canvasBloc.loadFromData(Uint8List.fromList(note.canvasData!));
+      // 老笔记可能整体偏离当前视口（旧的屏幕坐标系），等下一次 layout 拿到尺寸后居中。
+      _pendingFitToInkOnLayout = true;
     }
   }
 
   @override
   void dispose() {
+    _autosaveTimer?.cancel();
     _transformController.dispose();
     _canvasBloc.close();
     _ocrEngine?.dispose();
     unawaited(_handwritingRecognitionService.dispose());
     super.dispose();
+  }
+
+  /// 在每次内容变化后调用，重启 debounce 计时器
+  void _scheduleAutosave() {
+    if (_isSaving) return;
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(_autosaveDebounce, _performAutosave);
+  }
+
+  /// 静默保存：不弹提示、不返回上一页
+  Future<void> _performAutosave() async {
+    if (!mounted) return;
+    if (!_hasUnsavedChanges) return;
+    if (_isSaving || _isAutoSaving) return;
+
+    setState(() => _isAutoSaving = true);
+    try {
+      final saveService = widget.saveServiceOverride ??
+          CanvasSaveService(
+            databaseHelper: DatabaseHelper.instance,
+            textUnderstandingEngine: DeepSeekTextUnderstandingEngine(),
+          );
+      final canvasData = _canvasBloc.serializeCurrentStrokes();
+      final snapshotBytes = widget.captureCanvasForSave != null
+          ? await widget.captureCanvasForSave!.call()
+          : await _captureCanvas();
+      final thumbnailBytes = widget.captureThumbnailForSave != null
+          ? await widget.captureThumbnailForSave!.call()
+          : await _captureThumbnail();
+
+      _existingNote = await saveService.save(
+        CanvasSaveInput(
+          existingNote: _existingNote,
+          canvasData: canvasData,
+          snapshotBytes: snapshotBytes,
+          thumbnailBytes: thumbnailBytes,
+          recognizedText: _ocrResult,
+          now: DateTime.now(),
+        ),
+      );
+
+      if (!mounted) return;
+      try {
+        context.read<NoteListBloc>().add(LoadNotes());
+      } catch (_) {}
+      setState(() {
+        _hasUnsavedChanges = false;
+        _lastSavedAt = DateTime.now();
+      });
+    } catch (_) {
+      // 静默失败：不打扰用户，下次变更后再尝试
+    } finally {
+      if (mounted) setState(() => _isAutoSaving = false);
+    }
   }
 
   @override
@@ -174,6 +287,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
           appBar: AppBar(
             title: Text(widget.noteId == null ? '新建手写笔记' : '继续编辑笔记'),
             actions: [
+              _AutosaveStatusPill(
+                isSaving: _isAutoSaving || _isSaving,
+                hasUnsavedChanges: _hasUnsavedChanges,
+                lastSavedAt: _lastSavedAt,
+              ),
               IconButton(
                 onPressed: _handleResultAction,
                 tooltip: context.isLarge
@@ -279,7 +397,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
                       left: horizontal,
                       right: horizontal + canvasRightPadding,
                       bottom: showLargeResultDock ? 24 : 20,
-                      child: CanvasToolbar(onFitToScreen: _resetCanvasTransform),
+                      child: CanvasToolbar(
+                        onFitToScreen: _resetCanvasTransform,
+                        onFitToInk: _fitToInk,
+                        viewTransform: _transformController,
+                      ),
                     ),
                     if (showLargeResultDock)
                       Positioned(
@@ -434,12 +556,29 @@ class _CanvasScreenState extends State<CanvasScreen> {
       return;
     }
 
+    // 送 AI 之前给用户一次手动修正机会（中文手写 OCR 错误率较高）
+    final confirmedText = await _confirmTextBeforeAi(recognizedText);
+    if (confirmedText == null) return; // 用户取消
+    if (confirmedText != recognizedText) {
+      setState(() {
+        _ocrResult = confirmedText;
+        _hasUnsavedChanges = true;
+        _ocrBannerState = OcrBannerState.success;
+        _ocrHelperText = '你已在送 AI 前手动修正识别文本。';
+      });
+      _scheduleAutosave();
+    }
+
     setState(() {
       _isPreviewingAi = true;
       _isResultPanelExpanded = true;
     });
 
+    // 显示带进度的非阻塞 modal（AI 完成后自动关闭）
+    final progressEntry = _showAiProgressOverlay();
+
     CanvasAiPreviewResult result;
+    String? aiFailureMessage;
     try {
       final previewService = widget.aiPreviewServiceOverride ??
           CanvasAiPreviewService(
@@ -448,19 +587,35 @@ class _CanvasScreenState extends State<CanvasScreen> {
           );
       result = await previewService.preview(
         existingNote: _existingNote,
-        recognizedText: recognizedText,
+        recognizedText: confirmedText,
         now: DateTime.now(),
       );
+      if (!result.success) {
+        aiFailureMessage = result.errorMessage;
+      }
     } catch (error) {
+      aiFailureMessage = error.toString();
       result = CanvasAiPreviewResult.failure(
         engineName: 'deepseek',
-        message: 'AI 预览失败，请稍后再试：$error',
-        originalText: recognizedText,
-        correctedText: recognizedText,
+        message: 'AI 预览失败：$error',
+        originalText: confirmedText,
+        correctedText: confirmedText,
       );
     }
 
+    // 本地规则兜底：AI 失败时仍给用户一份基础结构化结果
+    if (!result.success) {
+      final fallback = LocalRuleFallbackService().buildPreview(
+        existingNote: _existingNote,
+        recognizedText: confirmedText,
+        now: DateTime.now(),
+        upstreamErrorMessage: aiFailureMessage,
+      );
+      result = fallback;
+    }
+
     if (!mounted) {
+      progressEntry.remove();
       return;
     }
 
@@ -481,7 +636,18 @@ class _CanvasScreenState extends State<CanvasScreen> {
     }
 
     setState(() => _isPreviewingAi = false);
+    progressEntry.remove();
     await _showAiPreviewSheet(result);
+  }
+
+  /// 在画布上覆盖一个进度条 OverlayEntry，AI 完成后调用 .remove() 关闭。
+  /// 显示已耗时 + 轮播提示，让用户在等待期间不至于面对空白。
+  OverlayEntry _showAiProgressOverlay() {
+    final entry = OverlayEntry(
+      builder: (_) => const _AiProgressOverlay(),
+    );
+    Overlay.of(context, rootOverlay: true).insert(entry);
+    return entry;
   }
 
   Future<void> _openVoiceCapture() async {
@@ -756,59 +922,35 @@ class _CanvasScreenState extends State<CanvasScreen> {
     );
   }
 
-  bool _shouldIgnorePointer(PointerEvent event, CanvasState state) {
-    if (event.kind == ui.PointerDeviceKind.stylus) return false;
-    if (state.stylusOnlyMode) return true;
-    if (_stylusActive) return true;
-    if (event.kind == ui.PointerDeviceKind.touch && event.size > 0.5) {
-      return true;
-    }
-    return false;
-  }
+  // ── Pointer tracking (Listener) – only tracks finger count, stylus, palm ──
 
-  void _handlePointerDown(PointerEvent event, CanvasState state) {
+  void _trackPointerDown(PointerEvent event) {
     _activePointers.add(event.pointer);
     _pointerDownPositions[event.pointer] = event.localPosition;
 
     if (_activePointers.length == 1) {
       _maxSimultaneousPointers = 1;
     } else {
-      _maxSimultaneousPointers = math.max(_maxSimultaneousPointers, _activePointers.length);
+      _maxSimultaneousPointers =
+          math.max(_maxSimultaneousPointers, _activePointers.length);
     }
 
     if (event.kind == ui.PointerDeviceKind.stylus) {
       _stylusActive = true;
     }
 
-    if (_shouldIgnorePointer(event, state)) return;
-
-    if (_activePointers.length == 1) {
-      if (_isResultPanelExpanded) {
-        setState(() => _isResultPanelExpanded = false);
-      }
-      setState(() {
-        _currentPoints = <Offset>[event.localPosition];
-      });
+    // Track pressure for variable-width drawing (most Android phones report 0..1).
+    if (event.pressure > 0 && event.pressureMin != event.pressureMax) {
+      final range = event.pressureMax - event.pressureMin;
+      _lastPointerPressure =
+          ((event.pressure - event.pressureMin) / range).clamp(0.0, 1.0);
     } else {
-      // Multi-finger detected: cancel current drawing stroke
-      if (_currentPoints.isNotEmpty) {
-        setState(() {
-          _currentPoints = <Offset>[];
-        });
-      }
+      _lastPointerPressure = 1.0;
     }
   }
 
-  void _handlePointerMove(PointerEvent event, CanvasState state) {
-    if (_shouldIgnorePointer(event, state)) return;
-    if (_activePointers.length != 1) return;
-
-    setState(() {
-      _currentPoints = <Offset>[..._currentPoints, event.localPosition];
-    });
-  }
-
-  void _handlePointerUp(PointerEvent event, BuildContext context, CanvasState state) {
+  void _trackPointerUp(
+      PointerEvent event, BuildContext context, CanvasState state) {
     final downPos = _pointerDownPositions.remove(event.pointer);
     _activePointers.remove(event.pointer);
 
@@ -816,17 +958,18 @@ class _CanvasScreenState extends State<CanvasScreen> {
       _stylusActive = false;
     }
 
-    // When all fingers are lifted, check for multi-finger tap gestures
+    // Multi-finger tap gesture detection (undo / redo)
     if (_activePointers.isEmpty && _pointerDownPositions.isEmpty) {
       final wasMultiFinger = _maxSimultaneousPointers >= 2;
-      final noDisplacement = downPos != null &&
-          (event.localPosition - downPos).distance < 20;
+      final noDisplacement =
+          downPos != null && (event.localPosition - downPos).distance < 20;
 
       if (wasMultiFinger && noDisplacement) {
         if (_maxSimultaneousPointers == 2 && state.canUndo) {
           HapticFeedback.selectionClick();
           context.read<CanvasBloc>().add(StrokeUndone());
           _hasUnsavedChanges = true;
+          _scheduleAutosave();
           if (!_didShowGestureHint) {
             _didShowGestureHint = true;
             ScaffoldMessenger.of(context).showSnackBar(
@@ -840,6 +983,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
           HapticFeedback.selectionClick();
           context.read<CanvasBloc>().add(StrokeRedone());
           _hasUnsavedChanges = true;
+          _scheduleAutosave();
           if (!_didShowGestureHint) {
             _didShowGestureHint = true;
             ScaffoldMessenger.of(context).showSnackBar(
@@ -850,64 +994,219 @@ class _CanvasScreenState extends State<CanvasScreen> {
             );
           }
         }
-        // Clear current points (drawing was already cancelled)
-        setState(() {
-          _currentPoints = <Offset>[];
-        });
+        setState(() => _currentPoints = <Offset>[]);
         _maxSimultaneousPointers = 0;
         return;
       }
       _maxSimultaneousPointers = 0;
     }
+  }
 
-    if (!_shouldIgnorePointer(event, state) && _currentPoints.isNotEmpty && _activePointers.isEmpty) {
+  // ── Drawing & viewport callbacks (ScaleGestureRecognizer) ──
+  //
+  // 设计：ScaleGestureRecognizer 同时支持 1+ 个手指。
+  // - pointerCount == 1：单指画画（在 World 坐标系下）
+  // - pointerCount >= 2：二指拖动 + 捏合缩放
+  // - 1 指画到一半 2 指介入：丢弃当前未完成笔迹，切换到拖动模式
+
+  /// 屏幕坐标 → World 坐标（应用 viewTransform 的逆变换）
+  Offset _screenToWorld(Offset screen) {
+    final inverse = Matrix4.tryInvert(_transformController.value);
+    if (inverse == null) return screen;
+    return MatrixUtils.transformPoint(inverse, screen);
+  }
+
+  void _onScaleStart(ScaleStartDetails details, CanvasState state) {
+    // 不论开局是单指还是多指，先把当前 transform 和锚点存起来
+    _gestureStartTransform = _transformController.value.clone();
+    _gestureStartWorldAnchor = _screenToWorld(details.localFocalPoint);
+
+    if (details.pointerCount == 1) {
+      // 单指：尝试开始画一笔
+      if (state.stylusOnlyMode && !_stylusActive) return;
+      if (_isResultPanelExpanded) {
+        setState(() => _isResultPanelExpanded = false);
+      }
+      final worldPoint = _screenToWorld(details.localFocalPoint);
+      setState(() {
+        _isDrawing = true;
+        _currentPoints = <Offset>[worldPoint];
+        _currentPressures = <double>[_lastPointerPressure];
+      });
+    }
+    // pointerCount >= 2：直接进入拖动/缩放模式，不画
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails details, CanvasState state) {
+    // 画笔中途多指介入：撤销当前笔迹，切到拖动模式
+    if (_isDrawing && details.pointerCount > 1) {
+      setState(() {
+        _isDrawing = false;
+        _currentPoints = <Offset>[];
+        _currentPressures = <double>[];
+      });
+      // 多指开始的瞬间重置 anchor，避免拖动跳变
+      _gestureStartTransform = _transformController.value.clone();
+      _gestureStartWorldAnchor = _screenToWorld(details.localFocalPoint);
+      return;
+    }
+
+    if (_isDrawing) {
+      if (state.stylusOnlyMode && !_stylusActive) return;
+      final worldPoint = _screenToWorld(details.localFocalPoint);
+      setState(() {
+        _currentPoints = <Offset>[..._currentPoints, worldPoint];
+        _currentPressures = <double>[..._currentPressures, _lastPointerPressure];
+      });
+      return;
+    }
+
+    // 拖动 + 缩放：重新构造 transform，保证 worldAnchor 始终落在当前 focal 点下
+    final initialScale = _gestureStartTransform.storage[0];
+    final rawScale = initialScale * details.scale;
+    final newScale = rawScale.clamp(_minScale, _maxScale);
+    _transformController.value = Matrix4.identity()
+      ..translateByDouble(
+        details.localFocalPoint.dx,
+        details.localFocalPoint.dy,
+        0,
+        1,
+      )
+      ..scaleByDouble(newScale, newScale, 1, 1)
+      ..translateByDouble(
+        -_gestureStartWorldAnchor.dx,
+        -_gestureStartWorldAnchor.dy,
+        0,
+        1,
+      );
+  }
+
+  void _onScaleEnd(
+    ScaleEndDetails details,
+    BuildContext context,
+    CanvasState state,
+  ) {
+    if (_isDrawing && _currentPoints.isNotEmpty) {
+      final pressures = (_currentPressures.length == _currentPoints.length)
+          ? List<double>.from(_currentPressures)
+          : null;
       context.read<CanvasBloc>().add(
             StrokeAdded(
               points: _currentPoints,
               color: state.currentColor,
               strokeWidth: state.currentStrokeWidth,
               isEraser: state.currentTool == CanvasTool.eraser,
+              pressures: pressures,
             ),
           );
       _hasUnsavedChanges = true;
       setState(() {
+        _isDrawing = false;
         _currentPoints = <Offset>[];
+        _currentPressures = <double>[];
       });
+      _scheduleAutosave();
+    } else {
+      _isDrawing = false;
     }
   }
 
+  /// 复位视图（100%、回到 World 原点）
   void _resetCanvasTransform() {
     _transformController.value = Matrix4.identity();
+  }
+
+  /// 把所有笔迹适配到当前视口（居中 + 等比缩放）。
+  /// 没有可见笔迹或视口未知时直接返回。
+  void _fitToInk() {
+    final viewport = _canvasViewportSize;
+    if (viewport == null ||
+        viewport.width <= 0 ||
+        viewport.height <= 0) {
+      return;
+    }
+
+    final strokes = _canvasBloc.state.strokes;
+    final bounds =
+        OffscreenCanvasRenderer.computeInkBounds(strokes, padding: 32);
+    if (bounds == null || bounds.width <= 0 || bounds.height <= 0) return;
+
+    final scaleX = viewport.width / bounds.width;
+    final scaleY = viewport.height / bounds.height;
+    final fitScale = math.min(scaleX, scaleY).clamp(_minScale, _maxScale);
+
+    // 想要 bounds.center 落到 viewport.center：
+    // T(P) = P*s + d；P = bounds.center → 期望 = viewport.center
+    // d = viewport.center - bounds.center * s
+    final dx = viewport.width / 2 - bounds.center.dx * fitScale;
+    final dy = viewport.height / 2 - bounds.center.dy * fitScale;
+    _transformController.value = Matrix4.identity()
+      ..translateByDouble(dx, dy, 0, 1)
+      ..scaleByDouble(fitScale, fitScale, 1, 1);
   }
 
   Widget _buildCanvas() {
     return BlocBuilder<CanvasBloc, CanvasState>(
       builder: (context, state) {
-        return Listener(
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: (event) => _handlePointerDown(event, state),
-          onPointerMove: (event) => _handlePointerMove(event, state),
-          onPointerUp: (event) => _handlePointerUp(event, context, state),
-          child: InteractiveViewer(
-            transformationController: _transformController,
-            minScale: 0.5,
-            maxScale: 4.0,
-            panEnabled: false,
-            scaleEnabled: true,
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            // 记录视口尺寸供 _fitToInk 使用
+            _canvasViewportSize =
+                Size(constraints.maxWidth, constraints.maxHeight);
+
+            // 老笔记加载后第一次拿到尺寸 → 自动居中
+            if (_pendingFitToInkOnLayout && state.strokes.isNotEmpty) {
+              _pendingFitToInkOnLayout = false;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _fitToInk();
+              });
+            }
+
+            return Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (event) => _trackPointerDown(event),
+              onPointerUp: (event) =>
+                  _trackPointerUp(event, context, state),
+              child: RawGestureDetector(
+            behavior: HitTestBehavior.opaque,
+            gestures: <Type, GestureRecognizerFactory>{
+              ScaleGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<ScaleGestureRecognizer>(
+                () => ScaleGestureRecognizer(),
+                (ScaleGestureRecognizer instance) {
+                  instance.onStart = (details) {
+                    _onScaleStart(details, state);
+                  };
+                  instance.onUpdate = (details) {
+                    _onScaleUpdate(details, state);
+                  };
+                  instance.onEnd = (details) {
+                    _onScaleEnd(details, context, state);
+                  };
+                },
+              ),
+            },
             child: Semantics(
               label: '手写画布，${state.strokes.length}笔',
-              child: CustomPaint(
-                painter: CanvasPainter(
-                  strokes: state.strokes,
-                  currentPoints: _currentPoints,
-                  currentColor: state.currentColor,
-                  currentStrokeWidth: state.currentStrokeWidth,
-                  isErasing: state.currentTool == CanvasTool.eraser,
+              child: AnimatedBuilder(
+                animation: _transformController,
+                builder: (context, _) => CustomPaint(
+                  painter: CanvasPainter(
+                    strokes: state.strokes,
+                    currentPoints: _currentPoints,
+                    currentPressures: _currentPressures,
+                    currentColor: state.currentColor,
+                    currentStrokeWidth: state.currentStrokeWidth,
+                    isErasing: state.currentTool == CanvasTool.eraser,
+                    viewTransform: _transformController.value,
+                  ),
+                  size: Size.infinite,
                 ),
-                size: Size.infinite,
               ),
             ),
           ),
+        );
+          },
         );
       },
     );
@@ -1002,54 +1301,40 @@ class _CanvasScreenState extends State<CanvasScreen> {
     return result ?? false;
   }
 
+  /// 把全部笔迹离屏渲染为 PNG 字节，用于保存 snapshot。
+  ///
+  /// 与之前 RepaintBoundary 截图不同，本方法**不受当前视口/缩放限制**：
+  /// 无论用户写到画布的哪个位置、缩放到什么比例，都会渲染完整笔迹边界。
   Future<Uint8List?> _captureCanvas({double pixelRatio = 2.0}) async {
-    try {
-      final boundary = _canvasRepaintKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
-      if (boundary == null) return null;
-      final image = await boundary.toImage(pixelRatio: pixelRatio);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      return byteData?.buffer.asUint8List();
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<Uint8List?> _captureCanvasForOcr() async {
-    final boundary = _canvasRepaintKey.currentContext?.findRenderObject()
-        as RenderRepaintBoundary?;
-    if (boundary == null) return null;
-
-    final devicePixelRatio =
-        MediaQuery.maybeOf(context)?.devicePixelRatio ?? 3.0;
-    final pixelRatio = devicePixelRatio.clamp(3.0, 4.5).toDouble();
-    final imageBytes = await _captureCanvas(pixelRatio: pixelRatio);
-    if (imageBytes == null) return null;
-
-    final inkBounds = _calculateInkBounds(_canvasBloc.state);
-    if (inkBounds == null) {
-      return imageBytes;
-    }
-
-    return _cropInkImageForOcr(
-      pngBytes: imageBytes,
-      logicalCanvasSize: boundary.size,
-      inkBounds: inkBounds,
+    final result = await const OffscreenCanvasRenderer().render(
+      strokes: _canvasBloc.state.strokes,
       pixelRatio: pixelRatio,
+      maxLongEdgePx: 3200,
+      padding: 64,
     );
+    return result?.pngBytes;
   }
 
+  /// 给 OCR 引擎喂的图：高 pixelRatio + 1600 长边上限以保证清晰度。
+  Future<Uint8List?> _captureCanvasForOcr() async {
+    final result = await const OffscreenCanvasRenderer().render(
+      strokes: _canvasBloc.state.strokes,
+      pixelRatio: 4.0,
+      maxLongEdgePx: 2400,
+      padding: 72,
+    );
+    return result?.pngBytes;
+  }
+
+  /// 列表卡片缩略图：长边最多 600px，体积小。
   Future<Uint8List?> _captureThumbnail() async {
-    try {
-      final boundary = _canvasRepaintKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
-      if (boundary == null) return null;
-      final image = await boundary.toImage(pixelRatio: 0.6);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      return byteData?.buffer.asUint8List();
-    } catch (_) {
-      return null;
-    }
+    final result = await const OffscreenCanvasRenderer().render(
+      strokes: _canvasBloc.state.strokes,
+      pixelRatio: 1.0,
+      maxLongEdgePx: 600,
+      padding: 32,
+    );
+    return result?.pngBytes;
   }
 
   bool get _hasInk {
@@ -1064,89 +1349,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   bool get _hasEraserEdits {
     return _canvasBloc.state.strokes.any((stroke) => stroke.isEraser);
-  }
-
-  Rect? _calculateInkBounds(CanvasState state) {
-    double minX = double.infinity;
-    double minY = double.infinity;
-    double maxX = 0;
-    double maxY = 0;
-    var hasPoints = false;
-
-    void addStrokePoints(List<Offset> points, double strokeWidth) {
-      if (points.isEmpty) return;
-      hasPoints = true;
-      final padding = math.max(strokeWidth, 8);
-      for (final point in points) {
-        minX = math.min(minX, point.dx - padding);
-        minY = math.min(minY, point.dy - padding);
-        maxX = math.max(maxX, point.dx + padding);
-        maxY = math.max(maxY, point.dy + padding);
-      }
-    }
-
-    for (final stroke in state.strokes) {
-      if (stroke.isEraser) continue;
-      addStrokePoints(stroke.points, stroke.strokeWidth);
-    }
-
-    if (_currentPoints.isNotEmpty && state.currentTool != CanvasTool.eraser) {
-      addStrokePoints(_currentPoints, state.currentStrokeWidth);
-    }
-
-    if (!hasPoints) return null;
-    return Rect.fromLTRB(minX, minY, maxX, maxY);
-  }
-
-  Uint8List _cropInkImageForOcr({
-    required Uint8List pngBytes,
-    required Size logicalCanvasSize,
-    required Rect inkBounds,
-    required double pixelRatio,
-  }) {
-    final decoded = img.decodeImage(pngBytes);
-    if (decoded == null) return pngBytes;
-
-    final logicalPadding = math.min(
-      math.max(logicalCanvasSize.shortestSide * 0.12, 28.0),
-      72.0,
-    );
-    final expandedBounds = Rect.fromLTRB(
-      math.max(0, inkBounds.left - logicalPadding),
-      math.max(0, inkBounds.top - logicalPadding),
-      math.min(logicalCanvasSize.width, inkBounds.right + logicalPadding),
-      math.min(logicalCanvasSize.height, inkBounds.bottom + logicalPadding),
-    );
-
-    final cropX = (expandedBounds.left * pixelRatio).floor();
-    final cropY = (expandedBounds.top * pixelRatio).floor();
-    final cropWidth = math.max(1, (expandedBounds.width * pixelRatio).ceil());
-    final cropHeight = math.max(1, (expandedBounds.height * pixelRatio).ceil());
-
-    var cropped = img.copyCrop(
-      decoded,
-      x: cropX,
-      y: cropY,
-      width: cropWidth,
-      height: cropHeight,
-    );
-
-    final longEdge = math.max(cropped.width, cropped.height);
-    if (longEdge < 1600) {
-      cropped = cropped.width >= cropped.height
-          ? img.copyResize(
-              cropped,
-              width: 1600,
-              interpolation: img.Interpolation.linear,
-            )
-          : img.copyResize(
-              cropped,
-              height: 1600,
-              interpolation: img.Interpolation.linear,
-            );
-    }
-
-    return Uint8List.fromList(img.encodePng(cropped));
   }
 
   Future<void> _saveNote() async {
@@ -1243,6 +1445,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
       var result = handwritingResult?.text.trim() ?? '';
       var usedImageFallback = false;
+      String? fallbackFailureReason;
 
       if (result.isEmpty) {
         setState(() {
@@ -1250,8 +1453,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
               ? '手写识别没有读出结果，正在回退到图片识别。'
               : '手写识别暂时不可用，正在回退到图片识别。';
         });
-        result = await _runImageOcrFallback();
-        usedImageFallback = true;
+        try {
+          result = await _runImageOcrFallback();
+          usedImageFallback = true;
+        } catch (error) {
+          fallbackFailureReason = '$error';
+          result = '';
+        }
       }
 
       setState(() {
@@ -1259,13 +1467,18 @@ class _CanvasScreenState extends State<CanvasScreen> {
         _hasUnsavedChanges = true;
         if (result.isEmpty) {
           _ocrBannerState = OcrBannerState.warning;
-          _ocrHelperText = handwritingError == null
-              ? '这次仍没有读清文本。请把数字或关键字写大一些、分开一点，再试一次。'
-              : '当前设备上的手写识别没有完成，图片识别也没读到文本。请把字写得更大更清楚后重试。';
+          _ocrHelperText = _buildOcrFailureMessage(
+            handwritingError: handwritingError,
+            fallbackFailureReason: fallbackFailureReason,
+            handwritingResult: handwritingResult,
+            hasEraserEdits: hasEraserEdits,
+          );
         } else {
           _ocrBannerState = OcrBannerState.success;
           if (usedImageFallback) {
-            _ocrHelperText = '本次由图片识别兜底完成。建议先快速校对，再决定是否保存。';
+            _ocrHelperText = handwritingError == null
+                ? '本次由图片识别兜底完成。建议先快速校对，再决定是否保存。'
+                : '手写识别异常，已改用图片识别兜底。建议先快速校对，再决定是否保存。';
           } else if (handwritingResult?.downloadedAnyModel == true) {
             _ocrHelperText = '首次手写识别模型已准备完成，识别成功。建议先快速校对再保存。';
           } else if (hasEraserEdits) {
@@ -1278,11 +1491,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
       widget.onOcrComplete?.call(result);
       shouldOpenCompactSheet = shouldUseCompactSheet;
-    } catch (_) {
+    } catch (error) {
       setState(() {
         _ocrBannerState = OcrBannerState.error;
         _ocrResult = '';
-        _ocrHelperText = '识别没有完成。你可以再试一次；如果持续失败，先保存当前手写内容。';
+        _ocrHelperText = '识别没有完成：$error。你可以再试一次；如果持续失败，先保存当前手写内容。';
       });
       shouldOpenCompactSheet = shouldUseCompactSheet;
     } finally {
@@ -1292,6 +1505,29 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (mounted && shouldOpenCompactSheet) {
       await _showCompactResultSheet();
     }
+  }
+
+  String _buildOcrFailureMessage({
+    required Object? handwritingError,
+    required String? fallbackFailureReason,
+    required HandwritingRecognitionResult? handwritingResult,
+    required bool hasEraserEdits,
+  }) {
+    if (handwritingError != null) {
+      return '手写识别失败：$handwritingError。已尝试回退到图片识别，但这次仍没有读到文本。建议把字写大一点、拉开间距后再试。';
+    }
+
+    if (fallbackFailureReason != null) {
+      return '手写识别没有结果，图片识别回退也失败了：$fallbackFailureReason。建议检查识别引擎或稍后重试。';
+    }
+
+    if (handwritingResult != null && !handwritingResult.hasText) {
+      return hasEraserEdits
+          ? '手写识别没有读出内容。检测到你用过橡皮，笔迹可能被打断了，建议重写关键字后再试。'
+          : '手写识别没有读出内容。建议把关键字写大一些、分开一点，再试一次。';
+    }
+
+    return '这次仍没有读清文本。建议把数字或关键字写大一些、分开一点，再试一次。';
   }
 
   Future<String> _runImageOcrFallback() async {
@@ -1320,6 +1556,64 @@ class _CanvasScreenState extends State<CanvasScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('识别文本已复制。')),
     );
+  }
+
+  /// 送 AI 之前的确认/编辑步骤。
+  /// 返回用户确认后的文本（可能编辑过）；返回 null 表示用户取消，AI 流程应中止。
+  Future<String?> _confirmTextBeforeAi(String initialText) async {
+    final controller = TextEditingController(text: initialText);
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('送 AI 整理前确认一下'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '中文手写识别可能有错。请快速扫一眼下方文本，错的字现在改一下，AI 就能整理得更准。',
+              style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 240),
+              child: TextField(
+                controller: controller,
+                maxLines: null,
+                expands: false,
+                keyboardType: TextInputType.multiline,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: '在这里修正识别结果',
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, null),
+            child: const Text('取消'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              final text = controller.text.trim();
+              if (text.isEmpty) {
+                Navigator.pop(dialogContext, null);
+              } else {
+                Navigator.pop(dialogContext, text);
+              }
+            },
+            icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+            label: const Text('送 AI 整理'),
+          ),
+        ],
+      ),
+    );
+    return result;
   }
 
   void _editOcrResult() {
@@ -2098,6 +2392,193 @@ class _PanelStatusPill extends StatelessWidget {
               color: accent,
               fontWeight: FontWeight.w700,
             ),
+      ),
+    );
+  }
+}
+
+/// AI 整理进度浮层：显示已耗时 + 轮播提示文案。
+class _AiProgressOverlay extends StatefulWidget {
+  const _AiProgressOverlay();
+
+  @override
+  State<_AiProgressOverlay> createState() => _AiProgressOverlayState();
+}
+
+class _AiProgressOverlayState extends State<_AiProgressOverlay> {
+  static const _tips = <String>[
+    'AI 正在阅读你的文本…',
+    '识别金额、日期和分类…',
+    '提取待办和健康关键词…',
+    '生成结构化结果…',
+    '快好了，复杂笔记可能要 5-10 秒…',
+  ];
+
+  Timer? _timer;
+  int _seconds = 0;
+  int _tipIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        _seconds += 1;
+        // 每 2 秒切一次提示
+        _tipIndex = (_seconds ~/ 2) % _tips.length;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 24,
+      child: Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 360),
+            margin: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            decoration: BoxDecoration(
+              color: AppColors.textPrimary.withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(AppColors.aiAccent),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 240),
+                        child: Text(
+                          _tips[_tipIndex],
+                          key: ValueKey(_tipIndex),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '已等待 ${_seconds}s',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.6),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 顶部自动保存状态指示器：保存中 / 已保存 HH:mm / 待保存
+class _AutosaveStatusPill extends StatelessWidget {
+  final bool isSaving;
+  final bool hasUnsavedChanges;
+  final DateTime? lastSavedAt;
+
+  const _AutosaveStatusPill({
+    required this.isSaving,
+    required this.hasUnsavedChanges,
+    required this.lastSavedAt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final IconData icon;
+    final String label;
+    final Color color;
+
+    if (isSaving) {
+      icon = Icons.cloud_sync_rounded;
+      label = '保存中';
+      color = AppColors.inkBlue;
+    } else if (hasUnsavedChanges) {
+      icon = Icons.edit_note_rounded;
+      label = '待保存';
+      color = AppColors.warning;
+    } else if (lastSavedAt != null) {
+      final t = lastSavedAt!;
+      final hh = t.hour.toString().padLeft(2, '0');
+      final mm = t.minute.toString().padLeft(2, '0');
+      icon = Icons.cloud_done_rounded;
+      label = '已保存 $hh:$mm';
+      color = AppColors.success;
+    } else {
+      return const SizedBox(width: 0);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isSaving)
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation(color),
+                ),
+              )
+            else
+              Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }
