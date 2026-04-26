@@ -163,6 +163,27 @@ class EntryRepository {
     }
   }
 
+  /// 更新指定 entry 的状态（如待办 todo↔done）。
+  ///
+  /// 返回受影响行数。
+  Future<int> updateEntryStatus({
+    required String entryId,
+    required String status,
+    DateTime? now,
+  }) async {
+    final db = await databaseHelper.database;
+    return db.update(
+      'entries',
+      {
+        'status': status,
+        'is_user_confirmed': 1,
+        'updated_at': (now ?? DateTime.now()).millisecondsSinceEpoch,
+      },
+      where: 'id = ?',
+      whereArgs: [entryId],
+    );
+  }
+
   Future<List<EntryRecord>> queryEntries(EntryQuery query) async {
     final db = await databaseHelper.database;
     final built = _buildQuery(query);

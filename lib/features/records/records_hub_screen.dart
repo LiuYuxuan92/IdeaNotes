@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 
@@ -321,6 +323,10 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
                 description: '你记录下来的花费会优先按一级分类汇总。',
               ),
               const SizedBox(height: 16),
+              if (data.categories.isNotEmpty) ...[
+                _CategoryPieChart(stats: data.categories),
+                const SizedBox(height: 16),
+              ],
               ...data.categories.map(
                 (stat) => _RecordLine(
                   title: stat.category,
@@ -342,6 +348,10 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
                 description: '适合快速定位哪几个月的花费更集中。',
               ),
               const SizedBox(height: 16),
+              if (data.trend.isNotEmpty) ...[
+                _MonthlyTrendBarChart(points: data.trend),
+                const SizedBox(height: 16),
+              ],
               ...data.trend.map(
                 (point) => _RecordLine(
                   title: _monthLabel(point.month),
@@ -405,6 +415,7 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
                 (group) => _TimelineDayCard(
                   dateLabel: _fullDateLabel(group.date),
                   entries: group.entries,
+                  onToggleTask: _toggleTaskStatus,
                 ),
               ),
             ],
@@ -412,6 +423,25 @@ class _RecordsHubScreenState extends State<RecordsHubScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _toggleTaskStatus(EntryRecord entry) async {
+    final nextStatus = entry.status == 'done' ? 'todo' : 'done';
+    try {
+      await _entryRepository.updateEntryStatus(
+        entryId: entry.id,
+        status: nextStatus,
+      );
+      if (!mounted) return;
+      setState(() {
+        _loadFuture = _loadCurrentTab();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('更新失败：$e')),
+      );
+    }
   }
 
   Widget _buildHealthBody(BuildContext context, _HealthHubData data) {
@@ -725,10 +755,12 @@ class _MetricCard extends StatelessWidget {
 class _TimelineDayCard extends StatelessWidget {
   final String dateLabel;
   final List<EntryRecord> entries;
+  final Future<void> Function(EntryRecord entry)? onToggleTask;
 
   const _TimelineDayCard({
     required this.dateLabel,
     required this.entries,
+    this.onToggleTask,
   });
 
   @override
@@ -765,6 +797,13 @@ class _TimelineDayCard extends StatelessWidget {
               trailing: entry.amountValue == null
                   ? null
                   : _RecordsHubScreenState._formatAmount(entry.amountValue!),
+              leadingCheckbox: onToggleTask == null
+                  ? null
+                  : entry.status == 'done',
+              isCompleted: entry.status == 'done',
+              onLeadingTap: onToggleTask == null
+                  ? null
+                  : () => onToggleTask!(entry),
             ),
           ),
         ],
@@ -777,15 +816,29 @@ class _RecordLine extends StatelessWidget {
   final String title;
   final String? subtitle;
   final String? trailing;
+  /// 当为非空时，左侧渲染一个 checkbox（值为是否选中）
+  final bool? leadingCheckbox;
+  final VoidCallback? onLeadingTap;
+  final bool isCompleted;
 
   const _RecordLine({
     required this.title,
     this.subtitle,
     this.trailing,
+    this.leadingCheckbox,
+    this.onLeadingTap,
+    this.isCompleted = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final titleStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
+          color: isCompleted ? AppColors.textMuted : AppColors.textPrimary,
+          decoration:
+              isCompleted ? TextDecoration.lineThrough : TextDecoration.none,
+          decorationColor: AppColors.textMuted,
+        );
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -799,16 +852,30 @@ class _RecordLine extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (leadingCheckbox != null) ...[
+            InkWell(
+              onTap: onLeadingTap,
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.only(right: 10, top: 2),
+                child: Icon(
+                  leadingCheckbox!
+                      ? Icons.check_circle_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  size: 22,
+                  color: leadingCheckbox!
+                      ? AppColors.success
+                      : AppColors.textSecondary,
+                  semanticLabel: leadingCheckbox! ? '已完成，点击取消' : '未完成，点击勾选',
+                ),
+              ),
+            ),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                ),
+                Text(title, style: titleStyle),
                 if (subtitle?.trim().isNotEmpty == true) ...[
                   const SizedBox(height: 4),
                   Text(
@@ -896,4 +963,280 @@ class _HealthHubData extends _RecordsHubData {
     required this.groups,
     required this.typeStats,
   });
+}
+
+// ════════════════ Charts ════════════════
+
+const _kChartPalette = <Color>[
+  AppColors.inkBlue,
+  AppColors.warning,
+  AppColors.success,
+  AppColors.aiAccent,
+  Color(0xFF8A4145),
+  Color(0xFF3C617C),
+  Color(0xFFA37A4D),
+  AppColors.textSecondary,
+];
+
+/// 支出分类饼图：左侧饼图，右侧 legend（分类名 + 占比）
+class _CategoryPieChart extends StatelessWidget {
+  final List<CategoryAmountStat> stats;
+
+  const _CategoryPieChart({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = stats.fold<double>(
+      0,
+      (sum, s) => sum + s.totalAmount.toDouble(),
+    );
+    if (total <= 0) return const SizedBox.shrink();
+
+    // 取前 7 项 + 其他
+    final visible = stats.length <= 8 ? stats : stats.take(7).toList();
+    final otherSum = stats.length <= 8
+        ? Decimal.zero
+        : stats.skip(7).fold<Decimal>(
+              Decimal.zero,
+              (sum, s) => sum + s.totalAmount,
+            );
+    final otherCount = stats.length <= 8
+        ? 0
+        : stats.skip(7).fold<int>(0, (sum, s) => sum + s.entryCount);
+
+    final entries = <_PieEntry>[
+      for (var i = 0; i < visible.length; i++)
+        _PieEntry(
+          label: visible[i].category,
+          value: visible[i].totalAmount.toDouble(),
+          color: _kChartPalette[i % _kChartPalette.length],
+        ),
+      if (otherCount > 0)
+        _PieEntry(
+          label: '其他 ($otherCount 条)',
+          value: otherSum.toDouble(),
+          color: _kChartPalette.last,
+        ),
+    ];
+
+    return SizedBox(
+      height: 180,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          AspectRatio(
+            aspectRatio: 1,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: CustomPaint(
+                painter: _PiePainter(entries: entries, total: total),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final entry in entries)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: entry.color,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            entry.label,
+                            style: Theme.of(context).textTheme.bodySmall,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${(entry.value / total * 100).toStringAsFixed(0)}%',
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: AppColors.textSecondary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PieEntry {
+  final String label;
+  final double value;
+  final Color color;
+
+  const _PieEntry({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+}
+
+class _PiePainter extends CustomPainter {
+  final List<_PieEntry> entries;
+  final double total;
+
+  _PiePainter({required this.entries, required this.total});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final radius = size.shortestSide / 2;
+    final center = Offset(size.width / 2, size.height / 2);
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    double startAngle = -math.pi / 2;
+    for (final entry in entries) {
+      if (entry.value <= 0) continue;
+      final sweep = entry.value / total * 2 * math.pi;
+      final paint = Paint()
+        ..style = PaintingStyle.fill
+        ..color = entry.color;
+      canvas.drawArc(rect, startAngle, sweep, true, paint);
+      startAngle += sweep;
+    }
+
+    // 中心镂空，做成环图
+    final donutPaint = Paint()..color = Colors.white;
+    canvas.drawCircle(center, radius * 0.55, donutPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _PiePainter old) =>
+      old.entries != entries || old.total != total;
+}
+
+/// 月度趋势柱图：横向最近 12 个月（或全部），柱顶显示金额（仅最高/末项）
+class _MonthlyTrendBarChart extends StatelessWidget {
+  final List<MonthlyTrendPoint> points;
+
+  const _MonthlyTrendBarChart({required this.points});
+
+  @override
+  Widget build(BuildContext context) {
+    // 取最近 12 个月，按月份升序展示
+    final sorted = [...points]..sort((a, b) => a.month.compareTo(b.month));
+    final recent =
+        sorted.length > 12 ? sorted.sublist(sorted.length - 12) : sorted;
+    final maxAmount = recent.fold<double>(
+      0,
+      (m, p) => math.max(m, p.totalAmount.toDouble()),
+    );
+    if (maxAmount <= 0) return const SizedBox.shrink();
+
+    return SizedBox(
+      height: 160,
+      child: CustomPaint(
+        painter: _BarChartPainter(
+          values: recent
+              .map((p) => p.totalAmount.toDouble())
+              .toList(growable: false),
+          labels: recent
+              .map((p) => p.month.length >= 7 ? p.month.substring(5) : p.month)
+              .toList(growable: false),
+          maxValue: maxAmount,
+          barColor: AppColors.inkBlue,
+          axisColor: AppColors.textMuted,
+          textColor: AppColors.textSecondary,
+        ),
+        size: Size.infinite,
+      ),
+    );
+  }
+}
+
+class _BarChartPainter extends CustomPainter {
+  final List<double> values;
+  final List<String> labels;
+  final double maxValue;
+  final Color barColor;
+  final Color axisColor;
+  final Color textColor;
+
+  _BarChartPainter({
+    required this.values,
+    required this.labels,
+    required this.maxValue,
+    required this.barColor,
+    required this.axisColor,
+    required this.textColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.isEmpty) return;
+    const labelHeight = 18.0;
+    const topPadding = 12.0;
+    final chartHeight = size.height - labelHeight - topPadding;
+    final n = values.length;
+    final spacing = size.width / n;
+    final barWidth = math.min(spacing * 0.6, 22.0);
+
+    final axisPaint = Paint()
+      ..color = axisColor.withValues(alpha: 0.3)
+      ..strokeWidth = 0.5;
+    canvas.drawLine(
+      Offset(0, topPadding + chartHeight),
+      Offset(size.width, topPadding + chartHeight),
+      axisPaint,
+    );
+
+    final maxIdx = values.indexOf(values.reduce(math.max));
+
+    for (var i = 0; i < n; i++) {
+      final v = values[i];
+      final h = v / maxValue * chartHeight;
+      final cx = spacing * (i + 0.5);
+      final left = cx - barWidth / 2;
+      final top = topPadding + chartHeight - h;
+      final rect = RRect.fromRectAndCorners(
+        Rect.fromLTWH(left, top, barWidth, h),
+        topLeft: const Radius.circular(4),
+        topRight: const Radius.circular(4),
+      );
+      final paint = Paint()
+        ..color = (i == maxIdx || i == n - 1)
+            ? barColor
+            : barColor.withValues(alpha: 0.45);
+      canvas.drawRRect(rect, paint);
+
+      // X 轴标签
+      final tp = TextPainter(
+        text: TextSpan(
+          text: labels[i],
+          style: TextStyle(color: textColor, fontSize: 10),
+        ),
+        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.center,
+      )..layout(maxWidth: spacing);
+      tp.paint(
+        canvas,
+        Offset(cx - tp.width / 2, topPadding + chartHeight + 4),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BarChartPainter old) =>
+      old.values != values || old.maxValue != maxValue;
 }
