@@ -1435,10 +1435,16 @@ class _CanvasScreenState extends State<CanvasScreen> {
       HandwritingRecognitionResult? handwritingResult;
       Object? handwritingError;
       try {
-        handwritingResult = await _handwritingRecognitionService.recognize(
-          strokes: _canvasBloc.state.strokes,
-          writingArea: writingArea,
-        );
+        // 外层 60s 兜底：服务内部已对模型下载 / 单语言识别分别加了超时；
+        // 这里再加一层保险，万一 ML Kit native 卡住也不会锁死 UI。
+        handwritingResult = await _handwritingRecognitionService
+            .recognize(
+              strokes: _canvasBloc.state.strokes,
+              writingArea: writingArea,
+            )
+            .timeout(const Duration(seconds: 60));
+      } on TimeoutException catch (error) {
+        handwritingError = error;
       } catch (error) {
         handwritingError = error;
       }
@@ -1514,6 +1520,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
     required bool hasEraserEdits,
   }) {
     if (handwritingError != null) {
+      if (handwritingError is TimeoutException) {
+        return '手写识别超时（可能是模型下载或网络问题）。已尝试图片识别回退，但这次也没读到文本。建议联网后重试，或把字写大一点。';
+      }
       return '手写识别失败：$handwritingError。已尝试回退到图片识别，但这次仍没有读到文本。建议把字写大一点、拉开间距后再试。';
     }
 

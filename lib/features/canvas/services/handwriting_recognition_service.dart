@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_digital_ink_recognition/google_mlkit_digital_ink_recognition.dart';
 
 import '../bloc/canvas_bloc.dart';
@@ -37,6 +39,12 @@ class HandwritingRecognitionService {
       <String, DigitalInkRecognizer>{};
   final bool isWifiRequiredForModelDownload;
 
+  /// 单个语言模型下载超时。首次下载可能较慢，留足够时间。
+  static const Duration _modelDownloadTimeout = Duration(seconds: 45);
+
+  /// 单语言识别调用超时。识别本身应在数秒内完成。
+  static const Duration _recognizeTimeout = Duration(seconds: 15);
+
   HandwritingRecognitionService({
     DigitalInkRecognizerModelManager? modelManager,
     this.isWifiRequiredForModelDownload = false,
@@ -54,10 +62,18 @@ class HandwritingRecognitionService {
       return const HandwritingRecognitionResult.empty();
     }
 
+    debugPrint(
+      '[handwriting] recognize start strokes=${visibleStrokes.length}',
+    );
     final downloadedAnyModel = await _ensureModelsReady();
     final normalizedInk = _normalizeInk(
       strokes: visibleStrokes,
       writingArea: writingArea,
+    );
+    debugPrint(
+      '[handwriting] ink normalized w=${normalizedInk.width.toStringAsFixed(1)} '
+      'h=${normalizedInk.height.toStringAsFixed(1)} '
+      'inkStrokes=${normalizedInk.ink.strokes.length}',
     );
     final context = DigitalInkRecognitionContext(
       writingArea: WritingArea(
@@ -72,10 +88,23 @@ class HandwritingRecognitionService {
         languageCode,
         () => DigitalInkRecognizer(languageCode: languageCode),
       );
-      final candidates = await recognizer.recognize(
-        normalizedInk.ink,
-        context: context,
-      );
+      List<RecognitionCandidate> candidates;
+      try {
+        candidates = await recognizer
+            .recognize(normalizedInk.ink, context: context)
+            .timeout(_recognizeTimeout);
+      } on TimeoutException {
+        debugPrint(
+          '[handwriting] recognize($languageCode) timeout after '
+          '${_recognizeTimeout.inSeconds}s — skipping language',
+        );
+        continue;
+      } catch (error, stack) {
+        debugPrint(
+          '[handwriting] recognize($languageCode) error: $error\n$stack',
+        );
+        continue;
+      }
       final bestCandidate = candidates
           .where((candidate) => candidate.text.trim().isNotEmpty)
           .fold<RecognitionCandidate?>(
@@ -118,13 +147,49 @@ class HandwritingRecognitionService {
   Future<bool> _ensureModelsReady() async {
     var downloadedAnyModel = false;
     for (final languageCode in _languageCodes) {
-      final downloaded = await _modelManager.isModelDownloaded(languageCode);
-      if (downloaded) continue;
-      final success = await _modelManager.downloadModel(
-        languageCode,
-        isWifiRequired: isWifiRequiredForModelDownload,
-      );
-      downloadedAnyModel = downloadedAnyModel || success;
+      bool downloaded;
+      try {
+        downloaded = await _modelManager
+            .isModelDownloaded(languageCode)
+            .timeout(_modelDownloadTimeout);
+      } on TimeoutException {
+        debugPrint(
+          '[handwriting] isModelDownloaded($languageCode) timeout — '
+          'skipping language',
+        );
+        continue;
+      } catch (error) {
+        debugPrint(
+          '[handwriting] isModelDownloaded($languageCode) error: $error',
+        );
+        continue;
+      }
+      if (downloaded) {
+        debugPrint('[handwriting] model $languageCode already downloaded');
+        continue;
+      }
+      debugPrint('[handwriting] downloading model $languageCode ...');
+      try {
+        final success = await _modelManager
+            .downloadModel(
+              languageCode,
+              isWifiRequired: isWifiRequiredForModelDownload,
+            )
+            .timeout(_modelDownloadTimeout);
+        debugPrint(
+          '[handwriting] model $languageCode download success=$success',
+        );
+        downloadedAnyModel = downloadedAnyModel || success;
+      } on TimeoutException {
+        debugPrint(
+          '[handwriting] downloadModel($languageCode) timeout after '
+          '${_modelDownloadTimeout.inSeconds}s — skipping language',
+        );
+      } catch (error) {
+        debugPrint(
+          '[handwriting] downloadModel($languageCode) error: $error',
+        );
+      }
     }
     return downloadedAnyModel;
   }
