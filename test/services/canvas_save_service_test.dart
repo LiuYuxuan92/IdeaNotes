@@ -1,54 +1,22 @@
-import 'dart:ffi' show DynamicLibrary;
-import 'dart:io';
-
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:idea_notes/core/models/note.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
 import 'package:idea_notes/core/storage/database_migrations.dart';
 import 'package:idea_notes/features/canvas/services/canvas_save_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-DynamicLibrary _openSqlite() {
-  const candidates = [
-    '/usr/lib64/libsqlite3.so.0',
-    '/usr/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    '/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    'libsqlite3.so',
-  ];
-
-  for (final path in candidates) {
-    if (path.startsWith('/') && !File(path).existsSync()) {
-      continue;
-    }
-
-    try {
-      return DynamicLibrary.open(path);
-    } catch (_) {}
-  }
-
-  throw StateError('Unable to load sqlite3 dynamic library');
-}
-
-void _ffiInit() {
-  open.overrideForAll(_openSqlite);
-}
-
-final _testDatabaseFactory = createDatabaseFactoryFfi(
-  ffiInit: _ffiInit,
-  noIsolate: true,
-);
+import '../_helpers/sqflite_test_init.dart';
 
 Future<void> _setUpInMemoryDatabase() async {
-  databaseFactory = _testDatabaseFactory;
+  final factory = ensureSqfliteTestFactory();
 
   try {
     await DatabaseHelper.instance.close();
   } catch (_) {}
 
-  final db = await _testDatabaseFactory.openDatabase(
+  final db = await factory.openDatabase(
     inMemoryDatabasePath,
     options: OpenDatabaseOptions(
       version: kDatabaseVersion,
@@ -97,11 +65,6 @@ void main() {
       expect(noteMap, isNotNull);
       expect(noteMap!['thumbnail_image_path'], '/tmp/note-new-1-thumb.png');
 
-      final entries =
-          await DatabaseHelper.instance.getNoteEntries('note-new-1');
-      expect(entries, isNotEmpty);
-      expect(entries.first['type'], 'event');
-
       final db = await DatabaseHelper.instance.database;
       final structuredEntries = await db.query(
         'entries',
@@ -125,24 +88,13 @@ void main() {
         'thumbnail_image_path': '/tmp/old-thumb.png',
         'recognized_text': '旧文本',
       });
-      await DatabaseHelper.instance.insertNoteEntry({
-        'id': 'old-entry',
-        'note_id': 'note-existing',
-        'type': 'memo',
-        'raw_text': '旧文本',
-        'amount': null,
-        'category': null,
-        'event_title': null,
-        'event_date': null,
-        'is_completed': 0,
-        'memo_text': '旧文本',
-        'created_at': now.millisecondsSinceEpoch,
-      });
 
       final service = CanvasSaveService(
         databaseHelper: DatabaseHelper.instance,
         saveSnapshot: (_, noteId) async => '/tmp/$noteId-new-snapshot.png',
         saveThumbnail: (_, noteId) async => null,
+        deleteSnapshotsForNote: (_) async {},
+        deleteThumbnailsForNote: (_) async {},
       );
 
       final existing = Note(
@@ -169,12 +121,6 @@ void main() {
       expect(saved.id, 'note-existing');
       expect(saved.snapshotImagePath, '/tmp/note-existing-new-snapshot.png');
       expect(saved.thumbnailImagePath, '/tmp/old-thumb.png');
-
-      final entries =
-          await DatabaseHelper.instance.getNoteEntries('note-existing');
-      expect(entries.length, 1);
-      expect(entries.first['raw_text'], '买菜 35.5');
-      expect(entries.first['type'], 'expense');
 
       final db = await DatabaseHelper.instance.database;
       final structuredEntries = await db.query(
@@ -207,11 +153,6 @@ void main() {
       );
 
       final db = await DatabaseHelper.instance.database;
-      final legacyEntries =
-          await DatabaseHelper.instance.getNoteEntries('note-vaccine-1');
-      expect(legacyEntries.length, 1);
-      expect(legacyEntries.first['type'], 'health');
-
       final structuredEntries = await db.query(
         'entries',
         where: 'note_id = ?',
@@ -297,11 +238,6 @@ void main() {
         ),
       );
 
-      final legacyEntries =
-          await DatabaseHelper.instance.getNoteEntries('note-health-1');
-      expect(legacyEntries.length, 1);
-      expect(legacyEntries.first['type'], 'health');
-
       final db = await DatabaseHelper.instance.database;
       final structuredEntries = await db.query(
         'entries',
@@ -365,6 +301,99 @@ void main() {
       );
     });
 
+    test('更新已有 note 时会先删除旧图片再写新图片', () async {
+      final now = DateTime(2026, 4, 27, 10, 0);
+      await DatabaseHelper.instance.insertNote({
+        'id': 'note-leak-check',
+        'notebook_id': 'default-notebook',
+        'created_at': now.millisecondsSinceEpoch,
+        'updated_at': now.millisecondsSinceEpoch,
+        'canvas_data': Uint8List.fromList([1]),
+        'snapshot_image_path': '/tmp/old-snap.png',
+        'thumbnail_image_path': '/tmp/old-thumb.png',
+        'recognized_text': '旧文本',
+      });
+
+      final calls = <String>[];
+      final service = CanvasSaveService(
+        databaseHelper: DatabaseHelper.instance,
+        saveSnapshot: (_, noteId) async {
+          calls.add('saveSnapshot:$noteId');
+          return '/tmp/$noteId-new-snap.png';
+        },
+        saveThumbnail: (_, noteId) async {
+          calls.add('saveThumbnail:$noteId');
+          return '/tmp/$noteId-new-thumb.png';
+        },
+        deleteSnapshotsForNote: (noteId) async {
+          calls.add('deleteSnapshots:$noteId');
+        },
+        deleteThumbnailsForNote: (noteId) async {
+          calls.add('deleteThumbnails:$noteId');
+        },
+      );
+
+      final existing = Note(
+        id: 'note-leak-check',
+        notebookId: 'default-notebook',
+        createdAt: now,
+        updatedAt: now,
+        snapshotImagePath: '/tmp/old-snap.png',
+        thumbnailImagePath: '/tmp/old-thumb.png',
+        recognizedText: '旧文本',
+      );
+
+      await service.save(
+        CanvasSaveInput(
+          existingNote: existing,
+          canvasData: Uint8List.fromList([2, 3]),
+          snapshotBytes: Uint8List.fromList([7]),
+          thumbnailBytes: Uint8List.fromList([8]),
+          recognizedText: '新文本',
+          now: DateTime(2026, 4, 27, 10, 30),
+        ),
+      );
+
+      // delete 必须发生在对应的 save 之前
+      expect(
+        calls.indexOf('deleteSnapshots:note-leak-check'),
+        lessThan(calls.indexOf('saveSnapshot:note-leak-check')),
+      );
+      expect(
+        calls.indexOf('deleteThumbnails:note-leak-check'),
+        lessThan(calls.indexOf('saveThumbnail:note-leak-check')),
+      );
+    });
+
+    test('创建新 note 时不会触发图片清理', () async {
+      final calls = <String>[];
+      final service = CanvasSaveService(
+        databaseHelper: DatabaseHelper.instance,
+        createId: () => 'note-fresh',
+        saveSnapshot: (_, noteId) async => '/tmp/$noteId-snap.png',
+        saveThumbnail: (_, noteId) async => '/tmp/$noteId-thumb.png',
+        deleteSnapshotsForNote: (noteId) async {
+          calls.add('deleteSnapshots:$noteId');
+        },
+        deleteThumbnailsForNote: (noteId) async {
+          calls.add('deleteThumbnails:$noteId');
+        },
+      );
+
+      await service.save(
+        CanvasSaveInput(
+          existingNote: null,
+          canvasData: Uint8List.fromList([1]),
+          snapshotBytes: Uint8List.fromList([2]),
+          thumbnailBytes: Uint8List.fromList([3]),
+          recognizedText: '新建笔记',
+          now: DateTime(2026, 4, 27, 11, 0),
+        ),
+      );
+
+      expect(calls, isEmpty);
+    });
+
     test('识别文本为空时会清空旧 entries 且不新增', () async {
       final now = DateTime(2026, 3, 13, 12, 0);
       await DatabaseHelper.instance.insertNote({
@@ -376,19 +405,6 @@ void main() {
         'snapshot_image_path': null,
         'thumbnail_image_path': null,
         'recognized_text': '旧文本',
-      });
-      await DatabaseHelper.instance.insertNoteEntry({
-        'id': 'old-entry-2',
-        'note_id': 'note-empty-text',
-        'type': 'memo',
-        'raw_text': '旧文本',
-        'amount': null,
-        'category': null,
-        'event_title': null,
-        'event_date': null,
-        'is_completed': 0,
-        'memo_text': '旧文本',
-        'created_at': now.millisecondsSinceEpoch,
       });
 
       final service =
@@ -411,10 +427,6 @@ void main() {
           now: DateTime(2026, 3, 13, 14, 0),
         ),
       );
-
-      final entries =
-          await DatabaseHelper.instance.getNoteEntries('note-empty-text');
-      expect(entries, isEmpty);
 
       final db = await DatabaseHelper.instance.database;
       final structuredEntries = await db.query(

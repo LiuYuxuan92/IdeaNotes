@@ -1,54 +1,22 @@
-import 'dart:ffi' show DynamicLibrary;
-import 'dart:io';
-
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/open.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
 import 'package:idea_notes/core/storage/database_migrations.dart';
 import 'package:idea_notes/features/canvas/services/canvas_load_service.dart';
 import 'package:idea_notes/features/canvas/services/canvas_save_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-DynamicLibrary _openSqlite() {
-  const candidates = [
-    '/usr/lib64/libsqlite3.so.0',
-    '/usr/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    '/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    'libsqlite3.so',
-  ];
-
-  for (final path in candidates) {
-    if (path.startsWith('/') && !File(path).existsSync()) {
-      continue;
-    }
-
-    try {
-      return DynamicLibrary.open(path);
-    } catch (_) {}
-  }
-
-  throw StateError('Unable to load sqlite3 dynamic library');
-}
-
-void _ffiInit() {
-  open.overrideForAll(_openSqlite);
-}
-
-final _testDatabaseFactory = createDatabaseFactoryFfi(
-  ffiInit: _ffiInit,
-  noIsolate: true,
-);
+import '../_helpers/sqflite_test_init.dart';
 
 Future<void> _setUpInMemoryDatabase() async {
-  databaseFactory = _testDatabaseFactory;
+  final factory = ensureSqfliteTestFactory();
 
   try {
     await DatabaseHelper.instance.close();
   } catch (_) {}
 
-  final db = await _testDatabaseFactory.openDatabase(
+  final db = await factory.openDatabase(
     inMemoryDatabasePath,
     options: OpenDatabaseOptions(
       version: kDatabaseVersion,
@@ -92,20 +60,12 @@ void main() {
       );
 
       final loaded = await loadService.load('flow-note-1');
-      final entryMaps =
-          await DatabaseHelper.instance.getNoteEntries('flow-note-1');
 
       expect(loaded.note, isNotNull);
       expect(loaded.note!.snapshotImagePath, '/tmp/flow-note-1-snapshot.png');
       expect(loaded.note!.thumbnailImagePath, '/tmp/flow-note-1-thumb.png');
       expect(loaded.ocrResult, '买菜 35.5\n记得买牛奶');
       expect(loaded.canvasData, Uint8List.fromList([1, 2, 3, 4]));
-
-      expect(entryMaps.length, 2);
-      expect(entryMaps[0]['type'], 'expense');
-      expect(entryMaps[0]['raw_text'], '买菜 35.5');
-      expect(entryMaps[1]['type'], 'event');
-      expect(entryMaps[1]['raw_text'], '记得买牛奶');
 
       final db = await DatabaseHelper.instance.database;
       final structuredEntries = await db.query(

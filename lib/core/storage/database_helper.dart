@@ -120,39 +120,24 @@ class DatabaseHelper {
     int offset = 0,
   }) async {
     final db = await database;
+    final escaped = escapeSqlLike(query);
     return await db.query(
       'notes',
-      where: 'recognized_text LIKE ?',
-      whereArgs: ['%$query%'],
+      where: "recognized_text LIKE ? ESCAPE '\\'",
+      whereArgs: ['%$escaped%'],
       orderBy: 'updated_at DESC',
       limit: limit,
       offset: offset,
     );
   }
 
-  // Note entry operations
-  Future<int> insertNoteEntry(Map<String, dynamic> entry) async {
-    final db = await database;
-    return await db.insert('note_entries', entry);
-  }
-
-  Future<List<Map<String, dynamic>>> getNoteEntries(String noteId) async {
-    final db = await database;
-    return await db.query(
-      'note_entries',
-      where: 'note_id = ?',
-      whereArgs: [noteId],
-      orderBy: 'created_at ASC',
-    );
-  }
-
-  Future<int> deleteNoteEntries(String noteId) async {
-    final db = await database;
-    return await db.delete(
-      'note_entries',
-      where: 'note_id = ?',
-      whereArgs: [noteId],
-    );
+  /// 转义 LIKE 通配符 `%`、`_` 与转义符自身，使其按字面量匹配。
+  /// 配合查询里的 `ESCAPE '\\'` 子句使用。
+  static String escapeSqlLike(String input) {
+    return input
+        .replaceAll(r'\', r'\\')
+        .replaceAll('%', r'\%')
+        .replaceAll('_', r'\_');
   }
 
   Future<void> close() async {

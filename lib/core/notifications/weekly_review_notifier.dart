@@ -1,8 +1,11 @@
 import 'package:decimal/decimal.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../../features/records/records_hub_screen.dart';
+import '../diagnostics/error_log.dart';
 import '../query/analytics_service.dart';
 import '../query/entry_query.dart';
 import '../query/timeline_service.dart';
@@ -21,6 +24,36 @@ class WeeklyReviewNotifier {
   static const String _channelId = 'weekly_review';
   static const String _channelName = '本周回顾';
   static const String _channelDescription = '每周日晚上推送一份本周记录摘要';
+  static const String _payloadWeeklyReview = 'weekly_review';
+
+  /// 共享给整个进程的 NavigatorKey。`IdeaNotesApp` 在 initState 时绑定一次，
+  /// 通知 tap handler 用它把当前 navigator 推到 Records Hub。
+  static GlobalKey<NavigatorState>? _navigatorKey;
+
+  static void bindNavigator(GlobalKey<NavigatorState> key) {
+    _navigatorKey = key;
+  }
+
+  /// 冷启动时如果是被通知点击拉起的，跳到 Records Hub。
+  /// `IdeaNotesApp` 在第一帧后调用一次。
+  static Future<void> handleColdLaunchIfAny() async {
+    final plugin = FlutterLocalNotificationsPlugin();
+    final details = await plugin.getNotificationAppLaunchDetails();
+    if (details?.didNotificationLaunchApp ?? false) {
+      _maybeNavigateForPayload(details!.notificationResponse?.payload);
+    }
+  }
+
+  static void _maybeNavigateForPayload(String? payload) {
+    if (payload != _payloadWeeklyReview) return;
+    final state = _navigatorKey?.currentState;
+    if (state == null) return;
+    state.push(
+      MaterialPageRoute(
+        builder: (_) => const RecordsHubScreen(),
+      ),
+    );
+  }
 
   final FlutterLocalNotificationsPlugin _plugin;
   final EntryRepository _entryRepository;
@@ -38,8 +71,10 @@ class WeeklyReviewNotifier {
     tz_data.initializeTimeZones();
     try {
       tz.setLocalLocation(tz.getLocation('Asia/Shanghai'));
-    } catch (_) {
-      // fall back to default
+    } catch (e, st) {
+      ErrorLog.instance.warn('notifications.timezone',
+          '设置 Asia/Shanghai 时区失败，使用默认时区',
+          error: e, stack: st);
     }
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -50,6 +85,9 @@ class WeeklyReviewNotifier {
     );
     await _plugin.initialize(
       const InitializationSettings(android: androidInit, iOS: iosInit),
+      onDidReceiveNotificationResponse: (response) {
+        _maybeNavigateForPayload(response.payload);
+      },
     );
     _initialized = true;
   }
@@ -100,6 +138,7 @@ class WeeklyReviewNotifier {
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+      payload: _payloadWeeklyReview,
     );
   }
 
@@ -127,6 +166,7 @@ class WeeklyReviewNotifier {
         ),
         iOS: DarwinNotificationDetails(),
       ),
+      payload: _payloadWeeklyReview,
     );
   }
 
@@ -172,7 +212,10 @@ class WeeklyReviewNotifier {
       }
       parts.add('点开看看本周时间线？');
       return parts.join('，');
-    } catch (_) {
+    } catch (e, st) {
+      ErrorLog.instance.warn('notifications.preview',
+          '生成本周回顾摘要失败，使用兜底文案',
+          error: e, stack: st);
       return '本周时间线已就绪，点开看看吧';
     }
   }

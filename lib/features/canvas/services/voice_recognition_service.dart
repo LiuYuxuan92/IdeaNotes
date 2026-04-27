@@ -1,3 +1,4 @@
+import 'package:idea_notes/core/diagnostics/error_log.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 typedef VoiceRecognitionResultCallback = void Function(
@@ -52,7 +53,9 @@ class SpeechToTextVoiceRecognitionService implements VoiceRecognitionService {
     try {
       final locale = await speechToText.systemLocale();
       return locale?.localeId;
-    } catch (_) {
+    } catch (e, st) {
+      ErrorLog.instance.warn('voice.systemLocale', '获取系统语音 locale 失败',
+          error: e, stack: st);
       return null;
     }
   }

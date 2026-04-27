@@ -1,10 +1,14 @@
 import 'package:sqflite/sqflite.dart';
 
-const int kDatabaseVersion = 6;
+const int kDatabaseVersion = 7;
 
 Future<void> createDatabaseSchema(Database db, int version) async {
   await db.execute('PRAGMA foreign_keys = ON');
   await _createBaseTables(db);
+  // 旧的 note_entries 仅在 v < 7 时创建，后续版本只走 entries。
+  if (version < 7) {
+    await _createLegacyNoteEntriesTable(db);
+  }
   await _ensureDefaultNotebook(db);
 
   // New installs should include the latest structured-data/query schema.
@@ -46,6 +50,13 @@ Future<void> migrateDatabaseSchema(
     await _createAiAndFilterSchema(db);
   }
 
+  if (oldVersion < 7) {
+    // 终结 legacy 双写：先把任何只在 note_entries 里的数据 backfill
+    // 到 entries（INSERT OR IGNORE 幂等），再 DROP 旧表。
+    await _backfillEntriesFromLegacyNoteEntries(db);
+    await db.execute('DROP TABLE IF EXISTS note_entries');
+  }
+
   // Defensive: keep the default notebook present for future writes.
   await _ensureDefaultNotebook(db);
   if (newVersion > kDatabaseVersion) {
@@ -76,7 +87,10 @@ Future<void> _createBaseTables(Database db) async {
       FOREIGN KEY (notebook_id) REFERENCES notebooks (id) ON DELETE CASCADE
     )
   ''');
+}
 
+/// 仅 v < 7 的旧库或迁移路径需要建这张表，v7+ 全程不再写入。
+Future<void> _createLegacyNoteEntriesTable(Database db) async {
   await db.execute('''
     CREATE TABLE note_entries (
       id TEXT PRIMARY KEY,

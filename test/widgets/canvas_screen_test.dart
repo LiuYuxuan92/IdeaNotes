@@ -1,6 +1,4 @@
 import 'dart:convert';
-import 'dart:ffi' show DynamicLibrary;
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -13,38 +11,11 @@ import 'package:idea_notes/features/canvas/canvas_screen.dart';
 import 'package:idea_notes/features/canvas/services/canvas_ai_preview_service.dart';
 import 'package:idea_notes/features/canvas/services/canvas_save_service.dart';
 import 'package:idea_notes/core/storage/database_helper.dart';
-import 'package:sqlite3/open.dart' as sqlite3_open;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-DynamicLibrary _openSqlite() {
-  const candidates = [
-    '/usr/lib64/libsqlite3.so.0',
-    '/usr/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    '/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    'libsqlite3.so',
-  ];
+import '../_helpers/sqflite_test_init.dart';
 
-  for (final path in candidates) {
-    if (path.startsWith('/') && !File(path).existsSync()) {
-      continue;
-    }
-
-    try {
-      return DynamicLibrary.open(path);
-    } catch (_) {}
-  }
-
-  throw StateError('Unable to load sqlite3 dynamic library');
-}
-
-void _ffiInit() {
-  sqlite3_open.open.overrideForAll(_openSqlite);
-}
-
-final _testDatabaseFactory = createDatabaseFactoryFfi(
-  ffiInit: _ffiInit,
-  noIsolate: true,
-);
+final _testDatabaseFactory = ensureSqfliteTestFactory();
 
 class _FakeTextUnderstandingEngine implements TextUnderstandingEngine {
   @override
@@ -277,14 +248,19 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
 
       final note = await DatabaseHelper.instance.getNote('note-save-db');
-      final entries =
-          await DatabaseHelper.instance.getNoteEntries('note-save-db');
 
       expect(note, isNotNull);
       expect(note!['recognized_text'], '记得买牛奶');
-      expect(entries.length, 1);
-      expect(entries.first['raw_text'], '记得买牛奶');
-      expect(entries.first['type'], 'event');
+
+      final db = await DatabaseHelper.instance.database;
+      final structuredEntries = await db.query(
+        'entries',
+        where: 'note_id = ?',
+        whereArgs: ['note-save-db'],
+      );
+      expect(structuredEntries.length, 1);
+      expect(structuredEntries.first['raw_text'], '记得买牛奶');
+      expect(structuredEntries.first['entry_type'], 'task');
     });
 
     testWidgets('可打开 AI 整理预览并看到结构化条目', (tester) async {

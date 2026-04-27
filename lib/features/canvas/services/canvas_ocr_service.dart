@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:idea_notes/core/diagnostics/error_log.dart';
 import 'package:idea_notes/core/ocr/ocr_engine.dart';
 
 class CanvasOcrResult {
@@ -54,7 +55,9 @@ class CanvasOcrService {
 
       final lines = await ocrEngine.recognizeTextFromFile(tempFilePath);
       return CanvasOcrResult.success(lines.join('\n'));
-    } catch (_) {
+    } catch (e, st) {
+      ErrorLog.instance.warn('canvas.ocr.recognize', 'OCR 识别失败',
+          error: e, stack: st);
       return const CanvasOcrResult.failure('识别失败，请重试');
     } finally {
       if (tempDir != null) {

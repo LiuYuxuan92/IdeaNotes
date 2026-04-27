@@ -83,22 +83,11 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
       _latestAiExtraction =
           await _entryRepository.getLatestAiExtraction(_currentNote.id);
 
-      try {
-        if (_structuredEntries.isEmpty) {
-          final entryMaps =
-              await DatabaseHelper.instance.getNoteEntries(_currentNote.id);
-          if (entryMaps.isNotEmpty) {
-            _entries = entryMaps.map(NoteEntry.fromMap).toList();
-          } else {
-            _entries = EntryParser.parseMultiLine(_recognizedText);
-          }
-        } else {
-          _entries = const [];
-        }
-      } catch (_) {
-        if (_structuredEntries.isEmpty) {
-          _entries = EntryParser.parseMultiLine(_recognizedText);
-        }
+      // 无结构化条目时直接 fallback 到本地解析；不再回查 legacy note_entries。
+      if (_structuredEntries.isEmpty) {
+        _entries = EntryParser.parseMultiLine(_recognizedText);
+      } else {
+        _entries = const [];
       }
     }
     if (mounted) {

@@ -1,5 +1,4 @@
 import 'package:equatable/equatable.dart';
-import 'note_entry.dart';
 
 class Note extends Equatable {
   final String id;
@@ -10,7 +9,6 @@ class Note extends Equatable {
   final String? snapshotImagePath;
   final String? thumbnailImagePath;
   final String? recognizedText;
-  final List<NoteEntry> entries;
 
   const Note({
     required this.id,
@@ -21,7 +19,6 @@ class Note extends Equatable {
     this.snapshotImagePath,
     this.thumbnailImagePath,
     this.recognizedText,
-    this.entries = const [],
   });
 
   factory Note.fromMap(Map<String, dynamic> map) {
@@ -59,7 +56,6 @@ class Note extends Equatable {
     String? snapshotImagePath,
     String? thumbnailImagePath,
     String? recognizedText,
-    List<NoteEntry>? entries,
   }) {
     return Note(
       id: id ?? this.id,
@@ -70,7 +66,6 @@ class Note extends Equatable {
       snapshotImagePath: snapshotImagePath ?? this.snapshotImagePath,
       thumbnailImagePath: thumbnailImagePath ?? this.thumbnailImagePath,
       recognizedText: recognizedText ?? this.recognizedText,
-      entries: entries ?? this.entries,
     );
   }
 
@@ -84,7 +79,6 @@ class Note extends Equatable {
         snapshotImagePath,
         thumbnailImagePath,
         recognizedText,
-        entries,
       ];
 
   List<String> get _recognizedLines {

@@ -49,6 +49,7 @@ void main() {
         findsOneWidget,
       );
 
+      // ignore: unawaited_futures
       bloc.close();
     });
 
@@ -72,6 +73,7 @@ void main() {
         findsOneWidget,
       );
 
+      // ignore: unawaited_futures
       bloc.close();
     });
 
@@ -97,6 +99,7 @@ void main() {
         findsOneWidget,
       );
 
+      // ignore: unawaited_futures
       bloc.close();
     });
 
@@ -124,6 +127,7 @@ void main() {
       expect(find.textContaining('第一行内容'), findsWidgets);
       expect(find.byType(FloatingActionButton), findsOneWidget);
 
+      // ignore: unawaited_futures
       bloc.close();
     });
   });

@@ -5,6 +5,15 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+/// Top-level helper used via `compute()` 在隔离线程内做 decode + resize + encode。
+/// 解码失败时返回长度为 0 的字节，调用方据此判定。
+Uint8List _encodeThumbnailInIsolate(Uint8List imageBytes) {
+  final decoded = img.decodeImage(imageBytes);
+  if (decoded == null) return Uint8List(0);
+  final thumbnail = img.copyResize(decoded, width: 200);
+  return Uint8List.fromList(img.encodePng(thumbnail));
+}
+
 /// 图片存储服务
 /// 负责保存、加载和删除笔记相关的图片（快照和缩略图）
 class ImageStorage {
@@ -53,13 +62,12 @@ class ImageStorage {
     return filePath;
   }
 
-  /// 保存缩略图图片（缩放为 200×200）
+  /// 保存缩略图图片（按宽度 200 保持比例缩放）
   /// 返回保存后的文件路径，解码失败时返回 null
   static Future<String?> saveThumbnail(Uint8List imageBytes, String noteId) async {
-    final decoded = img.decodeImage(imageBytes);
-    if (decoded == null) return null;
-    final thumbnail = img.copyResize(decoded, width: 200, height: 200);
-    final thumbnailBytes = Uint8List.fromList(img.encodePng(thumbnail));
+    // 解码 + resize + PNG 编码移到独立 isolate，避免在保存路径阻塞 UI 线程
+    final thumbnailBytes = await compute(_encodeThumbnailInIsolate, imageBytes);
+    if (thumbnailBytes.isEmpty) return null;
 
     final thumbnailDir = await _getThumbnailDirectory();
     final fileName = '${noteId}_thumb_${_uuid.v4()}.png';
@@ -96,6 +104,16 @@ class ImageStorage {
     // 删除快照
     await _deleteImagesInDirectory(await _getSnapshotDirectory(), noteId);
     // 删除缩略图
+    await _deleteImagesInDirectory(await _getThumbnailDirectory(), noteId);
+  }
+
+  /// 仅删除指定笔记的快照文件
+  static Future<void> deleteSnapshotsForNote(String noteId) async {
+    await _deleteImagesInDirectory(await _getSnapshotDirectory(), noteId);
+  }
+
+  /// 仅删除指定笔记的缩略图文件
+  static Future<void> deleteThumbnailsForNote(String noteId) async {
     await _deleteImagesInDirectory(await _getThumbnailDirectory(), noteId);
   }
 

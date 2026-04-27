@@ -37,6 +37,8 @@ class CanvasSaveService {
   final String Function() createId;
   final Future<String> Function(Uint8List bytes, String noteId) saveSnapshot;
   final Future<String?> Function(Uint8List bytes, String noteId) saveThumbnail;
+  final Future<void> Function(String noteId) deleteSnapshotsForNote;
+  final Future<void> Function(String noteId) deleteThumbnailsForNote;
   final TextUnderstandingEngine? textUnderstandingEngine;
   final String extractionPromptVersion;
   final String timezone;
@@ -47,6 +49,8 @@ class CanvasSaveService {
     String Function()? createId,
     Future<String> Function(Uint8List bytes, String noteId)? saveSnapshot,
     Future<String?> Function(Uint8List bytes, String noteId)? saveThumbnail,
+    Future<void> Function(String noteId)? deleteSnapshotsForNote,
+    Future<void> Function(String noteId)? deleteThumbnailsForNote,
     EntryRepository? entryRepository,
     this.textUnderstandingEngine,
     this.extractionPromptVersion = '1.0',
@@ -55,6 +59,10 @@ class CanvasSaveService {
   })  : createId = createId ?? const Uuid().v4,
         saveSnapshot = saveSnapshot ?? ImageStorage.saveSnapshot,
         saveThumbnail = saveThumbnail ?? ImageStorage.saveThumbnail,
+        deleteSnapshotsForNote =
+            deleteSnapshotsForNote ?? ImageStorage.deleteSnapshotsForNote,
+        deleteThumbnailsForNote =
+            deleteThumbnailsForNote ?? ImageStorage.deleteThumbnailsForNote,
         entryRepository =
             entryRepository ?? EntryRepository(databaseHelper: databaseHelper);
 
@@ -64,6 +72,7 @@ class CanvasSaveService {
       noteId: noteId,
       snapshotBytes: input.snapshotBytes,
       thumbnailBytes: input.thumbnailBytes,
+      isUpdate: input.existingNote != null,
     );
 
     final recognizedText = _normalizedText(input.recognizedText);
@@ -86,15 +95,22 @@ class CanvasSaveService {
     required String noteId,
     required Uint8List? snapshotBytes,
     required Uint8List? thumbnailBytes,
+    required bool isUpdate,
   }) async {
     String? snapshotPath;
     String? thumbnailPath;
 
     if (snapshotBytes != null) {
+      if (isUpdate) {
+        await deleteSnapshotsForNote(noteId);
+      }
       snapshotPath = await saveSnapshot(snapshotBytes, noteId);
     }
 
     if (thumbnailBytes != null) {
+      if (isUpdate) {
+        await deleteThumbnailsForNote(noteId);
+      }
       thumbnailPath = await saveThumbnail(thumbnailBytes, noteId);
     }
 
@@ -161,36 +177,7 @@ class CanvasSaveService {
         ? const <NoteEntry>[]
         : EntryParser.parseMultiLine(recognizedText);
 
-    await _replaceLegacyEntries(note.id, parsedEntries, now);
     await _replaceStructuredEntries(note, recognizedText, parsedEntries, now);
-  }
-
-  Future<void> _replaceLegacyEntries(
-    String noteId,
-    List<NoteEntry> entries,
-    DateTime now,
-  ) async {
-    await databaseHelper.deleteNoteEntries(noteId);
-
-    if (entries.isEmpty) {
-      return;
-    }
-
-    for (final entry in entries) {
-      await databaseHelper.insertNoteEntry({
-        'id': entry.id,
-        'note_id': noteId,
-        'type': entry.type.name,
-        'raw_text': entry.rawText,
-        'amount': entry.expense?.amount.toString(),
-        'category': entry.expense?.category,
-        'event_title': entry.event?.title,
-        'event_date': entry.event?.date?.millisecondsSinceEpoch,
-        'is_completed': (entry.event?.isCompleted ?? false) ? 1 : 0,
-        'memo_text': entry.memoText,
-        'created_at': now.millisecondsSinceEpoch,
-      });
-    }
   }
 
   Future<void> _replaceStructuredEntries(

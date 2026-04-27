@@ -64,6 +64,10 @@ dependencies:
   # Receive shared text from other apps (Share Target)
   receive_sharing_intent: ^1.8.0
 
+  # Backup / restore
+  archive: ^3.6.1
+  file_picker: ^8.1.2
+
 dev_dependencies:
   sqlite3: ^2.9.4
   flutter_test:

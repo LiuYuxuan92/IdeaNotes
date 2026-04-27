@@ -59,6 +59,7 @@ void main() {
       expect(find.text('输入关键词搜索笔记'), findsWidgets);
       expect(find.byIcon(Icons.search), findsWidgets);
 
+      // ignore: unawaited_futures
       bloc.close();
     });
 
@@ -76,6 +77,7 @@ void main() {
       expect(find.text('未找到相关笔记'), findsWidgets);
       expect(find.byIcon(Icons.search_off), findsOneWidget);
 
+      // ignore: unawaited_futures
       bloc.close();
     });
 
@@ -100,6 +102,7 @@ void main() {
       expect(find.textContaining('买牛奶'), findsWidgets);
       expect(find.byType(ListView), findsOneWidget);
 
+      // ignore: unawaited_futures
       bloc.close();
     });
 
@@ -131,6 +134,7 @@ void main() {
       expect(find.text('健康记录'), findsNothing);
       expect(find.textContaining('买牛奶'), findsWidgets);
 
+      // ignore: unawaited_futures
       bloc.close();
     });
 
@@ -165,6 +169,7 @@ void main() {
       final listRect = tester.getRect(find.byType(ListView));
       expect(listRect.height, greaterThan(120));
 
+      // ignore: unawaited_futures
       bloc.close();
     });
   });

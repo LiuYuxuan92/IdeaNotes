@@ -1,39 +1,13 @@
-import 'dart:ffi' show DynamicLibrary;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idea_notes/core/storage/database_migrations.dart';
 import 'package:path/path.dart' as path;
-import 'package:sqlite3/open.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-DynamicLibrary _openSqlite() {
-  const candidates = [
-    '/usr/lib64/libsqlite3.so.0',
-    '/usr/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    '/lib/x86_64-linux-gnu/libsqlite3.so.0',
-    'libsqlite3.so',
-  ];
+import '../_helpers/sqflite_test_init.dart';
 
-  for (final candidate in candidates) {
-    if (candidate.startsWith('/') && !File(candidate).existsSync()) {
-      continue;
-    }
-    try {
-      return DynamicLibrary.open(candidate);
-    } catch (_) {}
-  }
-  throw StateError('Unable to load sqlite3 dynamic library');
-}
-
-void _ffiInit() {
-  open.overrideForAll(_openSqlite);
-}
-
-final _databaseFactory = createDatabaseFactoryFfi(
-  ffiInit: _ffiInit,
-  noIsolate: true,
-);
+final _databaseFactory = ensureSqfliteTestFactory();
 
 Future<void> _createLegacyV3Schema(DatabaseExecutor db) async {
   await db.execute('PRAGMA foreign_keys = ON');
@@ -102,7 +76,7 @@ void main() {
       databaseFactory = _databaseFactory;
     });
 
-    test('create schema version 6 includes structured-data tables and indexes',
+    test('fresh schema at current version 包含结构化表且不再创建 note_entries',
         () async {
       final db = await _databaseFactory.openDatabase(
         inMemoryDatabasePath,
@@ -118,6 +92,7 @@ void main() {
       expect(await _tableExists(db, 'entry_links'), isTrue);
       expect(await _tableExists(db, 'ai_extractions'), isTrue);
       expect(await _tableExists(db, 'saved_filters'), isTrue);
+      expect(await _tableExists(db, 'note_entries'), isFalse);
       expect(await _indexExists(db, 'idx_entries_type_date'), isTrue);
       expect(await _indexExists(db, 'idx_entry_subjects_name'), isTrue);
 
@@ -131,7 +106,7 @@ void main() {
       await db.close();
     });
 
-    test('migrates from v3 to v6 and backfills legacy note_entries', () async {
+    test('从 v3 一路迁移到 v7，会回填 entries 并 DROP note_entries', () async {
       final tempDir = await Directory.systemTemp.createTemp('ideanotes-mig-');
       final dbPath = path.join(tempDir.path, 'idea_notes_test.db');
       final createdAt = DateTime(2025, 8, 1, 9, 0).millisecondsSinceEpoch;
@@ -184,6 +159,7 @@ void main() {
 
       expect(await _tableExists(migratedDb, 'entries'), isTrue);
       expect(await _tableExists(migratedDb, 'saved_filters'), isTrue);
+      expect(await _tableExists(migratedDb, 'note_entries'), isFalse);
 
       final entries = await migratedDb.query(
         'entries',
@@ -197,6 +173,68 @@ void main() {
       expect(entries.first['amount_value'], '628');
       expect(entries.first['occurred_date'], '2025-08-01');
       expect(entries.first['source_engine'], 'rule-legacy');
+
+      await migratedDb.close();
+      await tempDir.delete(recursive: true);
+    });
+
+    test('v6 → v7 会兜底回填仍只在 note_entries 的数据并 DROP 旧表', () async {
+      final tempDir = await Directory.systemTemp.createTemp('ideanotes-mig7-');
+      final dbPath = path.join(tempDir.path, 'idea_notes_test.db');
+      final createdAt = DateTime(2026, 4, 1, 9, 0).millisecondsSinceEpoch;
+
+      // 建一个完整 v6 库（结构化表 + 旧 note_entries 表都有）
+      final v6Db = await _databaseFactory.openDatabase(
+        dbPath,
+        options: OpenDatabaseOptions(
+          version: 6,
+          onCreate: createDatabaseSchema,
+        ),
+      );
+      await v6Db.insert('notes', {
+        'id': 'note-mix',
+        'notebook_id': 'default-notebook',
+        'created_at': createdAt,
+        'updated_at': createdAt,
+        'recognized_text': '只在旧表的备忘',
+      });
+      // 这条数据只写到 legacy 表，模拟旧版本残留
+      await v6Db.insert('note_entries', {
+        'id': 'orphan-entry',
+        'note_id': 'note-mix',
+        'type': 'memo',
+        'raw_text': '只在旧表的备忘',
+        'amount': null,
+        'category': null,
+        'event_title': null,
+        'event_date': null,
+        'is_completed': 0,
+        'memo_text': '只在旧表的备忘',
+        'created_at': createdAt,
+      });
+      await v6Db.close();
+
+      // 升级到 v7
+      final migratedDb = await _databaseFactory.openDatabase(
+        dbPath,
+        options: OpenDatabaseOptions(
+          version: kDatabaseVersion,
+          onCreate: createDatabaseSchema,
+          onUpgrade: migrateDatabaseSchema,
+        ),
+      );
+
+      expect(await _tableExists(migratedDb, 'note_entries'), isFalse);
+
+      final backfilled = await migratedDb.query(
+        'entries',
+        where: 'id = ?',
+        whereArgs: ['orphan-entry'],
+      );
+      expect(backfilled.length, 1);
+      expect(backfilled.first['entry_type'], 'memo');
+      expect(backfilled.first['raw_text'], '只在旧表的备忘');
+      expect(backfilled.first['source_engine'], 'rule-legacy');
 
       await migratedDb.close();
       await tempDir.delete(recursive: true);

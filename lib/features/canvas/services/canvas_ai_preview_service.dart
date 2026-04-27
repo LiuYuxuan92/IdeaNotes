@@ -1,3 +1,4 @@
+import 'package:idea_notes/core/diagnostics/error_log.dart';
 import 'package:idea_notes/core/extraction/ai_extraction_service.dart';
 import 'package:idea_notes/core/extraction/extraction_models.dart';
 import 'package:idea_notes/core/extraction/ocr_text_correction_engine.dart';
@@ -159,7 +160,9 @@ class CanvasAiPreviewService {
         return text;
       }
       return correctedText;
-    } catch (_) {
+    } catch (e, st) {
+      ErrorLog.instance.warn('ai.text_correction', 'OCR 文本纠错失败，回退到原文',
+          error: e, stack: st);
       return text;
     }
   }

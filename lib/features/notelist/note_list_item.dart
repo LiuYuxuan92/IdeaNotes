@@ -21,42 +21,12 @@ class NoteListItem extends StatelessWidget {
     this.isGridMode = false,
   });
 
-  // Determine accent color from dominant entry type
+  // Accent color derived from whether 笔记已识别出文本
   Color get _cardAccent {
-    if (note.entries.isEmpty) {
-      final hasText = (note.recognizedText ?? '').trim().isNotEmpty;
-      return hasText
-          ? AppColors.inkBlue.withValues(alpha: 0.35)
-          : AppColors.line.withValues(alpha: 0.5);
-    }
-    var expenseCount = 0;
-    var eventCount = 0;
-    var healthCount = 0;
-    for (final entry in note.entries) {
-      switch (entry.type) {
-        case NoteEntryType.expense:
-          expenseCount++;
-          break;
-        case NoteEntryType.event:
-          eventCount++;
-          break;
-        case NoteEntryType.health:
-          healthCount++;
-          break;
-        case NoteEntryType.memo:
-          break;
-      }
-    }
-    if (expenseCount > 0 &&
-        expenseCount >= eventCount &&
-        expenseCount >= healthCount) {
-      return AppColors.warning;
-    }
-    if (healthCount > 0 && healthCount >= eventCount) {
-      return AppColors.success;
-    }
-    if (eventCount > 0) return AppColors.inkBlue;
-    return AppColors.inkBlue.withValues(alpha: 0.35);
+    final hasText = (note.recognizedText ?? '').trim().isNotEmpty;
+    return hasText
+        ? AppColors.inkBlue.withValues(alpha: 0.35)
+        : AppColors.line.withValues(alpha: 0.5);
   }
 
   @override
@@ -508,20 +478,7 @@ class _InsightRow extends StatelessWidget {
     var healthCount = 0;
     var memoCount = 0;
 
-    if (note.entries.isNotEmpty) {
-      expenseCount = note.entries
-          .where((entry) => entry.type == NoteEntryType.expense)
-          .length;
-      eventCount = note.entries
-          .where((entry) => entry.type == NoteEntryType.event)
-          .length;
-      healthCount = note.entries
-          .where((entry) => entry.type == NoteEntryType.health)
-          .length;
-      memoCount = note.entries
-          .where((entry) => entry.type == NoteEntryType.memo)
-          .length;
-    } else if (text != null && text.isNotEmpty) {
+    if (text != null && text.isNotEmpty) {
       final lines = text.split('\n').where((line) => line.trim().isNotEmpty);
       for (final line in lines) {
         final entry = EntryParser.parse(line);
